@@ -422,6 +422,7 @@ class Var4D_Components(RunSpecs):
         self.trans_op = Transport(verbose=self.verbose)
         self.flux_cons = Fluxes(verbose=self.verbose)
         self.obs_cons = Observations(verbose=self.verbose)
+        self.progress_bars = {}
 
     def setup_obs_errors(self, obs_to_assim=[]):
         # first get the total number of obs
@@ -608,6 +609,14 @@ class Var4D_Components(RunSpecs):
 
         self.var4d_setup()
 
+        # Print number of function and adjoint evaluations
+        if not self.verbose:
+            self.progress_bars['cost'] = tqdm.tqdm(desc='Cost function evaluation'.rjust(30), total=float('inf'), unit='')
+            self.progress_bars['grad'] = tqdm.tqdm(desc='Gradient evaluation'.rjust(30), total=float('inf'), unit='')
+            self.progress_bars['fwd'] = tqdm.tqdm(desc='Forward transport'.rjust(30), total=float('inf'), unit='')
+            self.progress_bars['adj'] = tqdm.tqdm(desc='Adjoint transport'.rjust(30), total=float('inf'), unit='')
+            self.progress_bars['hessp'] = tqdm.tqdm(desc='Hessian product evaluation'.rjust(30), total=float('inf'), unit='')
+
         self.optim_diags = { # after optimization, show the progress of the cost function and gradient norm
             'iter': 0,
             'cost_function': [],
@@ -624,7 +633,7 @@ class Var4D_Components(RunSpecs):
         # now optimize
         minimize_args = dict(
             method=optim_method, jac=self.calculate_gradient,
-            options={'maxiter': max_iter, 'disp': True},
+            options={'maxiter': max_iter, 'disp': self.verbose},
             )
         if use_hessian and optim_method in ['Newton-CG', 'trust-krylov', 'trust-ncg', 'trust-constr']:
             minimize_args['hessp'] = self.hessian_product
@@ -640,6 +649,11 @@ class Var4D_Components(RunSpecs):
             ['mlo', 'spo', 'smo', 'brw', 'kum', 'lef', 'amt'],
             'apos', True)
         self.var4d_done()
+
+        if not self.verbose:
+            for step, pbar in self.progress_bars.items():
+                pbar.close()
+            self.progress_bars.pop(step)
 
     def gradient_test(self, init_cond, starting_alpha=1.0, alpha_step=0.1, max_iter=10, tolerance=1.0E-7):
         assert init_cond.lower() in ['ones', 'random'], 'Invalid init_cond specified'
@@ -691,12 +705,16 @@ class Var4D_Components(RunSpecs):
         return self.state_prior + np.matmul(self.L, state_vector)
 
     def forward_transport(self, flux_vector):
+        if 'fwd' in self.progress_bars:
+            self.progress_bars['fwd'].update()
         return self.trans_op.transport(flux_vector, model='GC', add_bg=False)
 
     def calculate_mismatch(self, model_obs):
         return model_obs - self.obs_vec
 
     def adjoint_transport(self, obs_vector):
+        if 'adj' in self.progress_bars:
+            self.progress_bars['adj'].update()
         return np.matmul(self.trans_op.Jacobian['GC'].T, obs_vector)
 
     def hessian_product(self, p, x):
@@ -708,6 +726,8 @@ class Var4D_Components(RunSpecs):
             RinvHLx = HLx/(self.obs_err**2)
             HTRinvHLx = self.adjoint_transport(RinvHLx)
             LTHTRinvHLx = np.matmul(self.L.T, HTRinvHLx)
+        if 'hessp' in self.progress_bars:
+            self.progress_bars['hessp'].update()
         return LTHTRinvHLx
 
     def calculate_cost(self, state_vector):
@@ -722,6 +742,10 @@ class Var4D_Components(RunSpecs):
             bg_cost = 0.5 * np.sum(state_vector**2)
             total_cost = obs_cost + bg_cost
             self.optim_diags['cost_function'].append(total_cost)
+
+        if 'cost' in self.progress_bars:
+            self.progress_bars['cost'].update()
+
         return total_cost
 
     def calculate_gradient(self, state_vector):
@@ -743,4 +767,8 @@ class Var4D_Components(RunSpecs):
             self.optim_diags['iter'] += 1
             gradient_norm = np.sqrt(np.sum(total_gradient**2))
             self.optim_diags['gradient_norm'].append(gradient_norm)
+
+        if 'grad' in self.progress_bars:
+            self.progress_bars['grad'].update()
+
         return total_gradient
