@@ -1,0 +1,746 @@
+import numpy as np
+from netCDF4 import Dataset
+import os, tqdm, pickle, time, numbers, calendar
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+from convert_jacobian import Paths
+from scipy import optimize
+
+class Timer(object):
+    indent_levels = [] # data to be shared across all instances to keep track of indentation level
+    def __init__(self, msg, **kwargs):
+        self.msg = msg
+        self.print_msg = kwargs['print'] if 'print' in kwargs else True
+
+    def __enter__(self):
+        self.t1 = time.time()
+        self.indent_levels.append(1)
+
+    def __exit__(self, ex_type, ex_value, ex_traceback):
+        t2 = time.time()
+        dt = t2-self.t1
+        num_indents = len(self.indent_levels)
+        if self.print_msg:
+            print("  "*num_indents + "%s %s"%(self.msg, self.format_dt(dt)))
+        _ = self.indent_levels.pop(0)
+
+    def format_dt(self, dt):
+        if dt > 60.0:
+            minutes = dt // 60
+            seconds = dt % 60.0
+            return "%im %.2fs"%(minutes, seconds)
+        else:
+            return "%.2fs"%dt
+
+class RunSpecs(Paths):
+
+    def __init__(self, *args, **kwargs):
+        super(RunSpecs, self).__init__()
+        self.start_date = datetime(2014,9,1)
+        self.end_date = datetime(2016,9,1) # exclusive
+        self.n_region = 22 # there is an additional non-optimized region
+        # set the number of months
+        n_month = 0
+        cur_date = self.start_date
+        while cur_date < self.end_date:
+            n_month += 1
+            cur_date += relativedelta(months=1)
+        self.n_month = n_month
+
+class Fluxes(RunSpecs):
+
+    def __init__(self, *args, **kwargs):
+        super(Fluxes, self).__init__()
+        self.verbose = kwargs['verbose'] if 'verbose' in kwargs else True
+        self.region_mask = os.path.join(self.data_root, 'transcom/TRANSCOM_mask_GEOS_Chem_4x5.nc')
+        self.Re = 6.371E+6
+        self.dS = {'regular': {}, 'geos': {}}
+
+    def surface_area(self, nlat, nlon, variant):
+        if (nlat,nlon) not in self.dS[variant]:
+            geom = self.geometry(nlat, nlon, variant)
+            self.dS[variant][(nlat,nlon)] = geom['surface_area']
+        return self.dS[variant][(nlat,nlon)]
+
+    def geometry(self, nlat, nlon, variant='geos'):
+        if variant == 'geos':
+            dlat = 180.0/(nlat-1) # bulk of the sphere
+            dlon = 360.0/nlon # bulk of the sphere
+            lat_edges = np.zeros(nlat+1, dtype=np.float64)
+            lat_edges[0] = -90.0
+            lat_edges[-1] = 90.0
+            lat_edges[1:nlat] = np.linspace(-90.0+dlat/2., 90.0-dlat/2., nlat-1)
+            lon_edges = np.linspace(-180.0-dlon/2., 180.0-dlon/2., nlon+1)
+        elif variant == 'regular':
+            dlat = 180.0/nlat
+            dlon = 360.0/nlon
+            lat_edges = np.linspace(-90., 90., nlat+1)
+            lon_edges = np.linspace(-180.,180.,nlon+1)
+        else:
+            raise RuntimeError("Variant is %s, not allowed"%variant)
+
+        # now the surface area
+        dlon = (np.pi/180.) * dlon
+        dS = np.zeros((nlat+1, nlon), np.float64)
+        lat_edges_rad = (np.pi/180.0) * lat_edges
+        for i, lat in enumerate(lat_edges_rad):
+            dS[i] = self.Re * self.Re * dlon * np.sin(lat)
+        dS = np.diff(dS, axis=0)
+
+        return {
+            'lat_edges': lat_edges,
+            'lon_edges': lon_edges,
+            'surface_area': dS,
+            }
+
+    def read_ct2022_flux(self, year, month, var_name):
+        file_name = os.path.join(self.data_root, 'fluxes/CT2022/CT2022.flux1x1.%04i%02i.nc'%(year, month))
+        with Dataset(file_name, 'r') as fid:
+            flux_1x1 = fid.variables[var_name][0] # mol/m^2/s
+        return 1.0E6 * flux_1x1 # micromol/m^2/s
+
+    def read_sib4_flux(self, year, month, var_name):
+        file_name = os.path.join(self.data_root, 'fluxes/SiB4/isotm5_%04i-%02i.nc'%(year, month))
+        with Dataset(file_name, 'r') as fid:
+            flux_1x1 = fid.variables[var_name][0] # mol/m^2/s
+        return 1.0E6 * flux_1x1 # micromol/m^2/s
+
+    def convert_1x1_flux_to_4x5(self, flux_1x1):
+        # The 4x5 GEOS Chem grid has
+        #   lat edges -90, -88, -84, -80, ... 80, 84, 88, 90
+        #   lon_edges -182.5, -177.5, -172.5, ... 172.5, 177.5
+        # So I have to first put the input 1x1 flux onto a 1x0.5 grid
+        flux_1x05 = np.repeat(flux_1x1, 2, axis=1)
+        # flux_1x05 has lon edges at -180, -179.5, -179, etc., so we need to rotate it by 5 cells in the longitude direction
+        flux_1x05 = np.roll(flux_1x05, 5, axis=1) # now left edge is at -182.5
+        # convert to per cell
+        flux_1x05 = flux_1x05 * self.surface_area(180, 720, 'regular')
+        # now fill a 4x5 array using reduceat
+        flux_4x5 = np.zeros((46,72), dtype=np.float64)
+        flux_4x5[0,:] = np.add.reduceat(flux_1x05[0:2], np.arange(0, flux_1x05.shape[1], 10), axis=1).sum(axis=0)
+        flux_4x5[45,:] = np.add.reduceat(flux_1x05[178:180], np.arange(0, flux_1x05.shape[1], 10), axis=1).sum(axis=0)
+        flux_4x5[1:45,:] = np.add.reduceat(
+            np.add.reduceat(flux_1x05[2:178,:], np.arange(0,flux_1x05.shape[0]-4,4), axis=0),
+            np.arange(0, flux_1x05.shape[1], 10), axis=1)
+        # convert back to per area
+        if (46,72) not in self.dS['geos']:
+            geom = self.geometry(46,72,'geos')
+            self.dS['geos'][(46,72)] = geom['surface_area']
+        flux_4x5 = flux_4x5 / self.surface_area(46, 72, 'geos')
+
+        return flux_4x5
+
+    def convert_4x5_flux_to_statevector(self, flux_4x5, year, month, **kwargs):
+        state_vector = np.zeros(self.n_region*self.n_month, np.float64)
+        # if year/month is outside our Jacobian simulation window, return zeros
+        jd = datetime(year, month, 1)
+        if jd < self.start_date or jd >= self.end_date:
+            return state_vector
+
+        dS = self.surface_area(46, 72, 'geos')
+        region_masks = {}
+        with Dataset(self.region_mask, 'r') as fid:
+            for ireg in range(self.n_region):
+                region_masks[ireg] = fid.variables['Region%02i'%(1+ireg)][:] # Region00 is unoptimized and not part of the Jacobian
+
+        # get time index within one region
+        for i_month in range(self.n_month):
+            if self.start_date + relativedelta(months=i_month) == jd:
+                break
+        else:
+            raise RuntimeError('Cannot find time index for %04i-%02i'%(year, month))
+
+        if 'regions' in kwargs:
+            region_range = kwargs['regions']
+        else:
+            region_range = range(self.n_region)
+        for ireg in region_range:
+            mask = region_masks[ireg]
+            mean_flux = (flux_4x5 * dS * mask).sum() / (dS * mask).sum()
+            state_vector[ireg*self.n_month+i_month] = mean_flux # in units of micromoles/m^2/s
+
+        # state_vector is now in micromoles/m^2/s, need to convert to Kg CO2/m^2/s
+        state_vector = 0.001 * 44.01 * 1.0E-6 * state_vector
+
+        return state_vector
+
+    def construct_state_vector_from_sib4(self, smush_regions=True):
+        ym_tuples = []
+        cur_month = self.start_date
+        while cur_month < self.end_date:
+            ym_tuples.append((cur_month.year, cur_month.month))
+            cur_month += relativedelta(months=1)
+
+        state_vec = 0.0
+        for year, month in tqdm.tqdm(ym_tuples, desc='Converting SiB4 to state vector'):
+            flux_nee = self.read_sib4_flux(year, month, 'I2b')
+            flux_oce = self.read_sib4_flux(year, month, 'Fnetoce')
+            if smush_regions:
+                flux_4x5 = self.convert_1x1_flux_to_4x5(flux_nee+flux_oce)
+                state_vec = state_vec + self.convert_4x5_flux_to_statevector(flux_4x5, year, month)
+            else:
+                flux_4x5 = self.convert_1x1_flux_to_4x5(flux_nee)
+                state_vec = state_vec + self.convert_4x5_flux_to_statevector(flux_4x5, year, month, regions=range(11))
+                flux_4x5 = self.convert_1x1_flux_to_4x5(flux_oce)
+                state_vec = state_vec + self.convert_4x5_flux_to_statevector(flux_4x5, year, month, regions=range(11,22))
+
+        return state_vec
+
+    def construct_state_vector_from_ct2022(self, smush_regions=True):
+        ym_tuples = []
+        cur_month = self.start_date
+        while cur_month < self.end_date:
+            ym_tuples.append((cur_month.year, cur_month.month))
+            cur_month += relativedelta(months=1)
+
+        state_vec = 0.0
+        for year, month in tqdm.tqdm(ym_tuples, desc='Converting CT2022 to state vector'):
+            flux_nee = self.read_ct2022_flux(year, month, 'bio_flux_opt')
+            flux_oce = self.read_ct2022_flux(year, month, 'ocn_flux_opt')
+            if smush_regions:
+                flux_4x5 = self.convert_1x1_flux_to_4x5(flux_nee+flux_oce)
+                state_vec = state_vec + self.convert_4x5_flux_to_statevector(flux_4x5, year, month)
+            else:
+                flux_4x5 = self.convert_1x1_flux_to_4x5(flux_nee)
+                state_vec = state_vec + self.convert_4x5_flux_to_statevector(flux_4x5, year, month, regions=range(11))
+                flux_4x5 = self.convert_1x1_flux_to_4x5(flux_oce)
+                state_vec = state_vec + self.convert_4x5_flux_to_statevector(flux_4x5, year, month, regions=range(11,22))
+
+        return state_vec
+
+class Transport(RunSpecs):
+
+    def __init__(self, *args, **kwargs):
+        super(Transport, self).__init__()
+        self.verbose = kwargs['verbose'] if 'verbose' in kwargs else True
+        self.jacobian_file = {
+            'GC': os.path.join(self.data_root, 'data/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask.nc'),
+            'TM5': None,
+            }
+        self.background = {
+            'GC': os.path.join(self.data_root, 'data/jacob_bgd_021624.nc'), # probably not correct
+            'TM5': None,
+            }
+        self.Jacobian = {}
+
+    def transport(self, state_vector, model='GC', add_bg=True):
+        if model not in self.Jacobian:
+            with Timer("Read Jacobian in ", print=self.verbose):
+                with Dataset(self.jacobian_file[model], 'r') as fid:
+                    self.Jacobian[model] = fid.variables['Jacobian'][:]
+
+        if add_bg:
+            with Timer("Added background in ", print=self.verbose):
+                with Dataset(self.background[model], 'r') as fid:
+                    bg = fid.variables['BG'][:]
+                bg = bg.sum(axis=1)
+        else:
+            bg = 0.0
+
+        with Timer("Simulated transport in ", print=self.verbose):
+            obs = np.matmul(self.Jacobian[model], state_vector) + bg # ppm
+
+        return obs
+
+class Observations(RunSpecs):
+
+    def __init__(self, *args, **kwargs):
+        super(Observations, self).__init__()
+        self.verbose = kwargs['verbose'] if 'verbose' in kwargs else True
+        self.noaa_observatories = ['mlo', 'spo', 'smo', 'brw']
+        self.mbl_sites = [
+            'abp', 'alt', 'ams', 'asc', 'avi', 'azr', 'bme', 'bmw', 'brw', 'cba', 'cgo', 'chr', 'crz', 'gmi', 'hba',
+            'ice', 'key', 'kum', 'mbc', 'mhd', 'mid', 'poc', 'psa', 'rpb', 'shm', 'smo', 'spo', 'stm', 'syo', 'zep',
+            ]
+        self.noaa_tall_tower_datasets = [
+            'co2_amt_tower-insitu_1_allvalid-107magl', 'co2_amt_surface-pfp_1_allvalid-107magl',
+            'co2_bao_tower-insitu_1_allvalid-300magl', 'co2_bao_surface-pfp_1_allvalid-300magl',
+            'co2_lef_tower-insitu_1_allvalid-396magl',
+            'co2_sct_tower-insitu_1_allvalid-305magl', 'co2_sct_surface-pfp_1_allvalid-305magl',
+            'co2_wbi_tower-insitu_1_allvalid-379magl', 'co2_wbi_surface-pfp_1_allvalid-379magl',
+            'co2_wgc_tower-insitu_1_allvalid-483magl',
+            'co2_wkt_tower-insitu_1_allvalid-457magl']
+        self.site_code_to_dataset = {
+            'lef': ['co2_lef_tower-insitu_1_allvalid-396magl'],
+            'amt': ['co2_amt_tower-insitu_1_allvalid-107magl'],
+            }
+        self.unassim_mdm = 1.0E36 # ppm
+
+    def convert_datetime_to_decimal_year(self, datetime_array):
+        ret_arr = np.zeros(len(datetime_array), dtype=np.float64)
+        for i,d in enumerate(datetime_array):
+            seconds_elapsed = (d-datetime(d.year,1,1)).total_seconds()
+            seconds_total = 86400 * (365 + calendar.isleap(d.year))
+            ret_arr[i] = d.year + seconds_elapsed/seconds_total
+        return ret_arr
+
+    def get_datasets_from_site(self, site_code):
+        with open(self.obs_by_dataset, 'rb') as fid:
+            obs_dict = pickle.load(fid)
+        ret_list = [k for k in obs_dict.keys() if k.startswith('co2_%s'%site_code.lower())]
+        return ret_list
+
+    def get_indices_from_datasets(self, datasets):
+        with open(self.obs_by_dataset, 'rb') as fid:
+            obs_dict = pickle.load(fid)
+        ret_arr = []
+        for k in datasets:
+            ret_arr.extend(obs_dict[k])
+        return np.array(ret_arr)
+
+    def get_time_series(self, obs_vector, dataset_list):
+        # first get the indices
+        obs_indices = self.get_indices_from_datasets(dataset_list)
+        # now read the obs times
+        with Dataset(self.obs_nc, 'r') as fid:
+            obs_times = fid.variables['time'][:]
+        # subselect and sort by time
+        obs = obs_vector[obs_indices]
+        obs_times = obs_times[obs_indices]
+        sort_order = np.argsort(obs_times)
+        obs = obs[sort_order]
+        obs_times = obs_times[sort_order]
+        # now convert to datetime object
+        obs_times = np.array([datetime(2000,1,1) + timedelta(minutes=int(m)) for m in obs_times])
+        return obs_times, obs
+
+    def save_timeseries_by_site(self, obs_vector, model_vector, mdm_vector, output_folder, site_codes, stage, append):
+        # stage is 'apri' or 'apos'
+        # append (to existing file) is True or False
+        if not os.path.isdir(output_folder):
+            os.makedirs(output_folder)
+
+        # First get all times
+        with Dataset(self.obs_nc, 'r') as fid:
+            obs_times = fid.variables['time'][:]
+
+        # Now loop over site
+        for site in site_codes:
+            if site in self.site_code_to_dataset:
+                ds_ = self.site_code_to_dataset[site]
+            else:
+                ds_ = self.get_datasets_from_site(site)
+                ds_ = [s for s in ds_ if 'flask' in s]
+            obs_idx = self.get_indices_from_datasets(ds_)
+
+            site_times = obs_times[obs_idx]
+            site_obs = obs_vector[obs_idx]
+            site_model = model_vector[obs_idx]
+            site_mdm = mdm_vector[obs_idx]
+            # sort by time
+            sort_order = np.argsort(site_times)
+            site_times = [datetime(2000,1,1) + timedelta(minutes=int(m)) for m in site_times[sort_order]]
+            site_obs = site_obs[sort_order]
+            site_model = site_model[sort_order]
+            site_mdm = site_mdm[sort_order]
+
+            # now write to file
+            comp_dict = {'zlib': True, 'complevel': 6, 'shuffle': True}
+            fname = os.path.join(output_folder, 'timeseries_%s.nc'%site)
+            file_mode = 'a' if append else 'w'
+
+            with Dataset(fname, file_mode) as fid:
+                if not append:
+                    fid.createDimension('obs', len(obs_idx))
+                    fid.createDimension('idate', 6)
+
+                if append:
+                    v = fid.variables['integer_times']
+                else:
+                    v = fid.createVariable('integer_times', np.int16, ('obs','idate'), **comp_dict)
+                v[:] = np.array([d.timetuple()[:6] for d in site_times], dtype=np.int16)
+
+                if append:
+                    v = fid.variables['decimal_times']
+                else:
+                    v = fid.createVariable('decimal_times', np.float64, ('obs',), **comp_dict)
+                v[:] = self.convert_datetime_to_decimal_year(site_times)
+
+                if append:
+                    v = fid.variables['observed']
+                else:
+                    v = fid.createVariable('observed', np.float64, ('obs',), **comp_dict)
+                    v.units = 'ppm'
+                v[:] = site_obs
+
+                if append:
+                    v = fid.variables['obs_error']
+                else:
+                    v = fid.createVariable('obs_error', np.float64, ('obs',), **comp_dict)
+                    v.units = 'ppm'
+                v[:] = site_mdm
+
+                model_var_name = 'modeled_%s'%stage
+                if append and model_var_name in fid.variables:
+                    v = fid.variables[model_var_name]
+                else:
+                    v = fid.createVariable(model_var_name, np.float64, ('obs',), **comp_dict)
+                    v.units = 'ppm'
+                v[:] = site_model
+
+                if append:
+                    setattr(fid, 'modification_date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                else:
+                    setattr(fid, 'creation_date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+class Construct_Synthetic_Obs(RunSpecs):
+
+    def __init__(self, true_flux='CT2022', transport='GC', *args, **kwargs):
+        # Let's take CT2022 to be "truth", and SiB4 to be prior by default, unless otherwise specified
+        super(Construct_Synthetic_Obs, self).__init__()
+        self.verbose = kwargs['verbose'] if 'verbose' in kwargs else True
+        self.true_flux = true_flux
+        self.transport = transport
+        self.synth_obs_file = os.path.join(self.data_root, 'obs/synthetic_obs_%s_%s.nc'%(true_flux, transport))
+
+    def make_obs(self):
+        fl = Fluxes()
+        if self.true_flux.lower() == 'ct2022':
+            state_vec = fl.construct_state_vector_from_ct2022(smush_regions=False)
+        elif self.true_flux.lower() == 'sib4':
+            state_vec = fl.construct_state_vector_from_sib4(smush_regions=False)
+        else:
+            raise RuntimeError('Unknown flux type %s'%self.true_flux)
+
+        t = Transport()
+        obs = t.transport(state_vec, model=self.transport, add_bg=False)
+
+        with Dataset(self.synth_obs_file, 'w') as fid:
+            fid.createDimension('observations', len(obs))
+            v = fid.createVariable('co2', np.float64, ('observations',), zlib=True, complevel=6, shuffle=True)
+            v[:] = obs
+            setattr(v, 'units', 'micromol/mol')
+
+class Var4D_Components(RunSpecs):
+
+    def __init__(self, project, *args, **kwargs):
+        super(Var4D_Components, self).__init__()
+        self.project = project
+        self.verbose = kwargs['verbose'] if 'verbose' in kwargs else True
+        self.output_dir = os.path.join(self.output_root, project)
+        # create a bunch of instances of the classes required
+        self.trans_op = Transport(verbose=self.verbose)
+        self.flux_cons = Fluxes(verbose=self.verbose)
+        self.obs_cons = Observations(verbose=self.verbose)
+
+    def setup_obs_errors(self, obs_to_assim=[]):
+        # first get the total number of obs
+        with Dataset(self.obs_nc, 'r') as fid:
+            nobs = len(fid.dimensions['nobs'])
+            oco2_idx = fid.variables['OCO2_idx'][:]
+            is_idx = fid.variables['IS_idx'][:]
+            tccon_idx = fid.variables['TCCON_idx'][:]
+            mip_mdm = fid.variables['mip_mdm'][:]
+
+        obs_err = np.zeros(nobs, dtype=np.float64)
+        # by default assimilate nothing
+        obs_err[:] = self.obs_cons.unassim_mdm
+
+        # convert everyything in obs_to_assim to lowercase
+        obs_assim_ = [s.lower() for s in obs_to_assim]
+
+        if 'oco2' in obs_assim_:
+            obs_err[oco2_idx] = mip_mdm[oco2_idx]
+
+        if 'tccon' in obs_assim_:
+            obs_err[tccon_idx] = mip_mdm[tccon_idx]
+
+        if 'is' in obs_assim_:
+            obs_err[is_idx] = mip_mdm[is_idx]
+
+        if 'mbl' in obs_assim_:
+            # make list of MBL datasets
+            mbl_datasets = []
+            for site in self.obs_cons.mbl_sites:
+                ds_ = self.obs_cons.get_datasets_from_site(site)
+                ds_ = [s for s in ds_ if 'flask' in s]
+                mbl_datasets.extend(ds_)
+            mbl_idx = self.obs_cons.get_indices_from_datasets(mbl_datasets)
+            obs_err[mbl_idx] = mip_mdm[mbl_idx]
+
+        if 'noaa_towers' in obs_assim_:
+            tower_idx = self.obs_cons.get_indices_from_datasets(self.obs_cons.noaa_tall_tower_datasets)
+            obs_err[tower_idx] = mip_mdm[tower_idx]
+
+        if 'noaa_observatories' in obs_assim_:
+            obs_datasets = []
+            for site in self.obs_cons.noaa_observatories:
+                ds_ = self.obs_cons.get_datasets_from_site(site)
+                ds_ = [s for s in ds_ if 'flask' in s]
+                obs_datasets.extend(ds_)
+            obs_idx = self.obs_cons.get_indices_from_datasets(obs_datasets)
+            obs_err[obs_idx] = mip_mdm[obs_idx]
+
+        return obs_err
+
+    def setup_obs(self, true_flux='CT2022', trans_model='GC', obs_to_assim=[]):
+        if true_flux.lower() == 'ct2022':
+            state_vec = self.flux_cons.construct_state_vector_from_ct2022(smush_regions=False)
+        elif true_flux.lower() == 'sib4':
+            state_vec = self.flux_cons.construct_state_vector_from_sib4(smush_regions=False)
+        else:
+            raise RuntimeError('Unknown true flux %s specified'%true_flux)
+
+        self.obs_vec = self.trans_op.transport(state_vec, model=trans_model, add_bg=False)
+        self.obs_err = self.setup_obs_errors(obs_to_assim)
+
+    def setup_corr(self, temp_corr, **kwargs):
+        # the state vector is length 528, arranged as 'region 1 month 1', 'region 1 month 2', ... 'region 22 month 23', 'region 22 month 24'
+        temp_corr_mat = np.zeros((self.n_month, self.n_month), np.float64)
+        # temp_corr being a number N means exponentially decaying with an e-folding length of N months
+        if isinstance(temp_corr, numbers.Number):
+            if temp_corr == 0.0:
+                temp_corr_mat = np.eye(self.n_month)
+            else:
+                for i in range(self.n_month):
+                    for j in range(self.n_month):
+                        temp_corr_mat[i,j] = np.exp(-np.abs(i-j)/temp_corr)
+        elif temp_corr.lower() == 'clim':
+            # each month is perfectly correlated with the same month in other years
+            for i in range(self.n_month):
+                for j in range(self.n_month):
+                    if (i-j) % 12 == 0:
+                        temp_corr_mat[i,j] = 1.0
+        else:
+            raise RuntimeError('Please implement how to handle temp_corr choice %s'%temp_corr)
+
+        hor_corr_mat = np.eye(self.n_region)
+        if 'region_pairs' in kwargs:
+            # syntax is {(region 1, region 2): corr, (region 3, region 4): corr}, etc.
+            for (ireg1,ireg2), r in kwargs['region_pairs'].items():
+                hor_corr_mat[ireg1,ireg2] = r
+                hor_corr_mat[ireg2,ireg1] = r
+
+        # now multiply the two to get the full correlation matrix, remembering that in the state vector,
+        # the lateral dimension (regions) varies slower than the time dimension (months)
+        corr_matrix = np.kron(hor_corr_mat, temp_corr_mat)
+
+        return corr_matrix
+
+    def setup_cov(self, corr_matrix, unc_vector):
+        # corr_matrix is n_state x n_state, unc_vector is n_state
+        n_state = unc_vector.shape[0]
+        assert (corr_matrix.shape[0] == n_state and corr_matrix.shape[1] == n_state), 'Shapes of correlation matrix and uncertainty vector are non-compliant'
+        cov_matrix = np.zeros((n_state, n_state), np.float64)
+        for i in range(n_state):
+            for j in range(n_state):
+                cov_matrix[i,j] = corr_matrix[i,j] * unc_vector[i] * unc_vector[j]
+
+        return cov_matrix
+
+    def var4d_setup(self):
+        with Timer("Created true obs in ", print=self.verbose):
+            # set up the obs with CT2022 as truth
+            self.setup_obs(true_flux='CT2022', obs_to_assim=['noaa_observatories'])
+        with Timer("Prior fluxes and covariance setup in ", print=self.verbose):
+            # set up the prior, which is SiB4
+            self.state_prior = self.flux_cons.construct_state_vector_from_sib4()
+            # set up prior uncertainty, which (let's say) is 25% of the prior
+            self.unc_prior = 0.25 * np.abs(self.state_prior)
+            # set up prior covariance matrix, assuming a 2 month decay and no cross-region correlation
+            prior_corr = self.setup_corr(temp_corr=2.0)
+            # make correlation expicitly symmetric to avoid roundoff errors
+            self.prior_corr = 0.5*(prior_corr + prior_corr.T)
+            prior_cov = self.setup_cov(self.prior_corr, self.unc_prior)
+            # make covariance expicitly symmetric to avoid roundoff errors
+            self.prior_cov = 0.5*(prior_cov + prior_cov.T)
+            # calculate L such that LL^T = self.prior_cov
+            self.L = np.linalg.cholesky(self.prior_cov)
+            # set the prior in preconditioned space to be a vector of zeros
+            n_state = self.state_prior.shape[0]
+            self.state_prior_preco = np.zeros(n_state, dtype=np.float64)
+
+    def var4d_done(self):
+        output_file = os.path.join(self.output_dir, 'optim_summary.nc')
+        comp_dict = {'zlib': True, 'complevel': 6, 'shuffle': True}
+        res = self.optim_result
+
+        with Dataset(output_file, 'w') as fid:
+            fid.createDimension('cost_eval', len(self.optim_diags['cost_function']))
+            fid.createDimension('grad_eval', len(self.optim_diags['gradient_norm']))
+
+            v = fid.createVariable('cost_function', np.float64, ('cost_eval',), **comp_dict)
+            v[:] = np.array(self.optim_diags['cost_function'])
+            setattr(v, 'comment', 'Cost function for each iteration')
+
+            v = fid.createVariable('gradient_norm', np.float64, ('grad_eval',), **comp_dict)
+            v[:] = np.array(self.optim_diags['gradient_norm'])
+            setattr(v, 'comment', 'L2 norm of the gradient of the cost function for each iteration')
+
+            setattr(fid, 'iterations', np.int32(res.nit))
+            setattr(fid, 'converged', np.int32(res.success))
+            setattr(fid, 'final_cost_function', res.fun)
+            setattr(fid, 'nfev', np.int32(res.nfev))
+            setattr(fid, 'njev', np.int32(res.njev))
+            setattr(fid, 'nit', np.int32(res.nit))
+            if 'nhev' in dir(res):
+                setattr(fid, 'nhev', np.int32(res.nhev))
+
+            fid.createDimension('n_state', res.x.shape[0])
+
+            v = fid.createVariable('x_final', np.float64, ('n_state',), **comp_dict)
+            v[:] = res.x
+            setattr(v, 'comment', 'Final state vector in preconditioned space')
+
+            v = fid.createVariable('j_final', np.float64, ('n_state',), **comp_dict)
+            v[:] = res.jac
+            setattr(v, 'comment', 'Final Jacobian in preconditioned space')
+
+            if 'hess_inv' in dir(res):
+                v = fid.createVariable('hess_inv', np.float64, ('n_state','n_state'), **comp_dict)
+                v[:] = res.hess_inv
+                setattr(v, 'comment', 'Approximate inverse Hessian in preconditioned space')
+
+            v = fid.createVariable('prior_flux', np.float64, ('n_state',), **comp_dict)
+            v[:] = self.state_prior
+            setattr(v, 'comment', 'Prior flux vector')
+
+            v = fid.createVariable('poste_flux', np.float64, ('n_state',), **comp_dict)
+            v[:] = self.state_poste
+            setattr(v, 'comment', 'Posterior flux vector')
+
+            setattr(fid, 'creation_date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+    def var4d_chain(self, **kwargs):
+        max_iter = kwargs['max_iter'] if 'max_iter' in kwargs else 50
+        optim_method = kwargs['optim_method'] if 'optim_method' in kwargs else 'BFGS'
+        use_hessian = kwargs['hessian'] if 'hessian' in kwargs else False
+
+        self.var4d_setup()
+
+        self.optim_diags = { # after optimization, show the progress of the cost function and gradient norm
+            'iter': 0,
+            'cost_function': [],
+            'gradient_norm': [],
+            }
+
+        # first, store the observations simulated with prior fluxes as model diagnostic
+        obs_apri = self.forward_transport(self.state_prior)
+        self.obs_cons.save_timeseries_by_site(
+            self.obs_vec, obs_apri, self.obs_err, self.output_dir,
+            ['mlo', 'spo', 'smo', 'brw', 'kum', 'lef', 'amt'],
+            'apri', False)
+
+        # now optimize
+        minimize_args = dict(
+            method=optim_method, jac=self.calculate_gradient,
+            options={'maxiter': max_iter, 'disp': True},
+            )
+        if use_hessian and optim_method in ['Newton-CG', 'trust-krylov', 'trust-ncg', 'trust-constr']:
+            minimize_args['hessp'] = self.hessian_product
+        with Timer("Optimization finished in ", print=self.verbose):
+            res = optimize.minimize(self.calculate_cost, self.state_prior_preco, **minimize_args)
+
+        self.optim_result = res
+        self.state_poste_preco = res.x
+        self.state_poste = self.state_to_flux(res.x)
+        obs_apos = self.forward_transport(self.state_poste)
+        self.obs_cons.save_timeseries_by_site(
+            self.obs_vec, obs_apos, self.obs_err, self.output_dir,
+            ['mlo', 'spo', 'smo', 'brw', 'kum', 'lef', 'amt'],
+            'apos', True)
+        self.var4d_done()
+
+    def gradient_test(self, init_cond, starting_alpha=1.0, alpha_step=0.1, max_iter=10, tolerance=1.0E-7):
+        assert init_cond.lower() in ['ones', 'random'], 'Invalid init_cond specified'
+
+        self.var4d_setup() # setup the preconditioner and prior covariance matrix
+        self.optim_diags = { # after optimization, show the progress of the cost function and gradient norm
+            'iter': 0,
+            'cost_function': [],
+            'gradient_norm': [],
+            }
+
+        if init_cond.lower() == 'ones':
+            x0 = np.ones_like(self.state_prior_preco)
+        elif init_cond.lower() == 'random':
+            x0 = np.random.standard_normal(self.state_prior_preco.shape)
+
+        # calculate cost at x0
+        J0 = self.calculate_cost(x0)
+        # calculate gradient at x0
+        g0 = self.calculate_gradient(x0)
+        # calculate DJ1
+        DJ1 = np.matmul(g0.T, g0)
+
+        # now start the gradient test loop
+        converged = False
+        alpha = starting_alpha
+        current_iter = 1
+        # write the header line
+        print(
+            'iter'.rjust(4) + 'alpha'.rjust(8) + 'J_bg'.rjust(15) + 'J_obs'.rjust(15) + 'J_tot'.rjust(15) +
+            'DJ1'.rjust(15) + 'DJ2'.rjust(15) + 'DJ2/DJ1'.rjust(15) + '1-DJ2/DJ1'.rjust(15))
+
+        while (current_iter <= max_iter) and (not converged):
+            x = x0 - alpha*g0
+            # calculate cost at x0-alpha*g0
+            J = self.calculate_cost(x)
+            DJ2 = (J0-J)/alpha
+            print(
+                "%4i"%current_iter + "%8.3g"%alpha + "%15.7e"%(0.5*sum(x0**2)) + "%15.7e"%(J-0.5*sum(x0**2)) + "%15.7e"%J +
+                "%15.7e"%DJ1 + "%15.7e"%DJ2 + "%15.7g"%(DJ2/DJ1) + "%15.7e"%(1-DJ2/DJ1))
+
+            if np.abs(1-DJ2/DJ1) < tolerance:
+                converged = True
+            else:
+                alpha = alpha*alpha_step
+                current_iter += 1
+
+    def state_to_flux(self, state_vector):
+        return self.state_prior + np.matmul(self.L, state_vector)
+
+    def forward_transport(self, flux_vector):
+        return self.trans_op.transport(flux_vector, model='GC', add_bg=False)
+
+    def calculate_mismatch(self, model_obs):
+        return model_obs - self.obs_vec
+
+    def adjoint_transport(self, obs_vector):
+        return np.matmul(self.trans_op.Jacobian['GC'].T, obs_vector)
+
+    def hessian_product(self, p, x):
+        # returns the product of the Hessian and vector x, without explicitly evaluating the Hessian
+        # ignore p, the value of the state vector
+        with Timer("Calculated product with Hessian in ", print=self.verbose):
+            Lx = np.matmul(self.L, x)
+            HLx = self.forward_transport(Lx)
+            RinvHLx = HLx/(self.obs_err**2)
+            HTRinvHLx = self.adjoint_transport(RinvHLx)
+            LTHTRinvHLx = np.matmul(self.L.T, HTRinvHLx)
+        return LTHTRinvHLx
+
+    def calculate_cost(self, state_vector):
+        with Timer("Cost calculated in ", print=self.verbose):
+            # convert to flux
+            flux_vec = self.state_to_flux(state_vector)
+            # simulate obs
+            obs = self.forward_transport(flux_vec)
+            # Hx-y
+            self.mdm = self.calculate_mismatch(obs) # saving it in 'self' because we need this to calculate the gradient as well
+            obs_cost = 0.5 * np.sum((self.mdm/self.obs_err)**2)
+            bg_cost = 0.5 * np.sum(state_vector**2)
+            total_cost = obs_cost + bg_cost
+            self.optim_diags['cost_function'].append(total_cost)
+        return total_cost
+
+    def calculate_gradient(self, state_vector):
+        with Timer("Gradient calculated in ", print=self.verbose):
+            # assume that self.mdm has already been calculated and is the most current
+            if not 'mdm' in dir(self): # can happen e.g., for CG algorithms
+                # convert to flux
+                flux_vec = self.state_to_flux(state_vector)
+                # simulate obs
+                obs = self.forward_transport(flux_vec)
+                self.mdm = self.calculate_mismatch(obs)
+
+            adj_forcing = self.mdm/(self.obs_err**2)
+            gradient = self.adjoint_transport(adj_forcing)
+            gradient_preco = np.matmul(self.L.T, gradient)
+            # delete self.mdm to prevent reusing old ones
+            del self.mdm
+            total_gradient = gradient_preco + state_vector
+            self.optim_diags['iter'] += 1
+            gradient_norm = np.sqrt(np.sum(total_gradient**2))
+            self.optim_diags['gradient_norm'].append(gradient_norm)
+        return total_gradient
