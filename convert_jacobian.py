@@ -8,8 +8,25 @@ class Paths(object):
 
     def __init__(self):
         super(Paths, self).__init__()
-        self.data_root = 'SSIM-GHG'
-        self.output_root = 'SSIM-GHG/output' # can be anywhere else
+        # define the order in which paths will be searched for input data
+        input_folder_order = [
+            '/home/jovyan/shared/SSIM-GHG', # on GHG Center's JupyterHub
+            os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/2024/SSIM-GHG'), # Sourish's laptop
+            ]
+        output_folder_order = [
+            os.path.join(os.environ['HOME'], 'inversion_output'), # GHG Center's JupyterHub
+            os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/2024/SSIM-GHG/output'), # Sourish's laptop
+            ]
+        for folder_i, folder_o in zip(input_folder_order, output_folder_order):
+            if os.path.isdir(folder_i):
+                self.data_root = folder_i
+                self.output_root = folder_o
+                if not os.path.isdir(self.output_root):
+                    os.makedirs(self.output_root)
+                break
+        else:
+            raise RuntimeError('No suitable folder found with input data')
+
         self.jacobi_rda = os.path.join(self.data_root, 'data/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask_hour_timestamping.rda')
         self.jacobi_nc = os.path.join(self.data_root, 'data/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask.nc')
         self.obs_rda = os.path.join(self.data_root, 'obs/obs_catalog_041724_unit_pulse_hour_timestamp_witherrors.rda')

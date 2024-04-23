@@ -53,8 +53,27 @@ class Fluxes(RunSpecs):
         super(Fluxes, self).__init__()
         self.verbose = kwargs['verbose'] if 'verbose' in kwargs else True
         self.region_mask = os.path.join(self.data_root, 'transcom/TRANSCOM_mask_GEOS_Chem_4x5.nc')
+        self.original_mask = os.path.join(self.data_root, 'transcom/TRANSCOM_mask_original_1x1.nc')
         self.Re = 6.371E+6
         self.dS = {'regular': {}, 'geos': {}}
+        self.transcom_regions = [ # because someone was not diligent about putting this in the data files
+            'North American Boreal', 'North American Temperate', 'South American Tropical', 'South American Temperate',
+            'Northern Africa', 'Southern Africa', 'Eurasian Boreal', 'Eurasian Temperate', 'Tropical Asia', 'Australia',
+            'Europe', 'North Pacific Temperate', 'West Pacific Tropical', 'East Pacific Tropical', 'South Pacific Temperate',
+            'Northern Ocean', 'North Atlantic Temperate', 'Atlantic Tropical', 'South Atlantic Temperate', 'Southern Ocean',
+            'Indian Tropical', 'South Indian Temperate',
+            ]
+        self.calculate_region_areas()
+
+    def calculate_region_areas(self):
+        with Dataset(self.original_mask, 'r') as fid:
+            mask64 = fid.variables['mask64'][:]
+        nlat, nlon = mask64.shape
+        dS = self.surface_area(nlat, nlon, 'regular')
+        self.transcom_region_areas = np.zeros(len(self.transcom_regions), np.float64)
+        for i in range(1,len(self.transcom_regions)+1):
+            region_mask = np.logical_and(mask64 > i-0.1, mask64 < i+0.1) # avoid floating point equality test
+            self.transcom_region_areas[i-1] = dS[region_mask].sum() # m^2
 
     def surface_area(self, nlat, nlon, variant):
         if (nlat,nlon) not in self.dS[variant]:
@@ -484,6 +503,7 @@ class Var4D_Components(RunSpecs):
 
         self.obs_vec = self.trans_op.transport(state_vec, model=trans_model, add_bg=False)
         self.obs_err = self.setup_obs_errors(obs_to_assim)
+        self.true_flux = state_vec
 
     def setup_corr(self, temp_corr, **kwargs):
         # the state vector is length 528, arranged as 'region 1 month 1', 'region 1 month 2', ... 'region 22 month 23', 'region 22 month 24'
@@ -595,10 +615,37 @@ class Var4D_Components(RunSpecs):
             v = fid.createVariable('prior_flux', np.float64, ('n_state',), **comp_dict)
             v[:] = self.state_prior
             setattr(v, 'comment', 'Prior flux vector')
+            setattr(v, 'units', 'Kg CO2/m^2/s')
 
             v = fid.createVariable('poste_flux', np.float64, ('n_state',), **comp_dict)
             v[:] = self.state_poste
             setattr(v, 'comment', 'Posterior flux vector')
+            setattr(v, 'units', 'Kg CO2/m^2/s')
+
+            v = fid.createVariable('true_flux', np.float64, ('n_state',), **comp_dict)
+            v[:] = self.true_flux
+            setattr(v, 'comment', 'The flux vector that was used to create the obs')
+            setattr(v, 'units', 'Kg CO2/m^2/s')
+
+            assert self.n_region == len(self.flux_cons.transcom_regions), "Length of n_region does not match number of TRANSCOM regions"
+
+            fid.createDimension('n_region', self.n_region)
+            fid.createDimension('n_month', self.n_month)
+            fid.createDimension('n_ymd', 3)
+
+            v = fid.createVariable('region_areas', np.float64, ('n_region',), **comp_dict)
+            v[:] = self.flux_cons.transcom_region_areas
+            setattr(v, 'units', 'm^2')
+            setattr(v, 'region_names', ','.join(self.flux_cons.transcom_regions))
+
+            ymd_tuples = []
+            cur_date = self.start_date
+            while cur_date < self.end_date:
+                ymd_tuples.append(cur_date.timetuple()[:3])
+                cur_date += relativedelta(months=1)
+            v = fid.createVariable('time_coordinate', np.int16, ('n_month','n_ymd'), **comp_dict)
+            v[:] = np.array(ymd_tuples, dtype=np.int16)
+            setattr(v, 'description', 'year/month/day denoting the beginning of each month corresponding to monthly fluxes')
 
             setattr(fid, 'creation_date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
