@@ -11,17 +11,22 @@ class Timer(object):
     def __init__(self, msg, **kwargs):
         self.msg = msg
         self.print_msg = kwargs['print'] if 'print' in kwargs else True
+        self.addendum = {}
 
     def __enter__(self):
         self.t1 = time.time()
         self.indent_levels.append(1)
+        return self.addendum
 
     def __exit__(self, ex_type, ex_value, ex_traceback):
         t2 = time.time()
         dt = t2-self.t1
         num_indents = len(self.indent_levels)
         if self.print_msg:
-            print("  "*num_indents + "%s %s"%(self.msg, self.format_dt(dt)))
+            print_line = "  "*num_indents + "%s %s"%(self.msg, self.format_dt(dt))
+            if 'postfix' in self.addendum:
+                print_line = '%s %s'%(print_line, self.addendum['postfix'])
+            print(print_line)
         _ = self.indent_levels.pop(0)
 
     def format_dt(self, dt):
@@ -442,7 +447,6 @@ class Var4D_Components(RunSpecs):
         self.trans_op = Transport(verbose=self.verbose)
         self.flux_cons = Fluxes(verbose=self.verbose)
         self.obs_cons = Observations(verbose=self.verbose)
-        self.progress_bars = {}
 
     def setup_obs_errors(self, **kwargs):
         # kwargs is a dictionary such as {'oco2': True, 'tccon': True, 'is': True, 'mbl': True, 'sites': ['mlo','spo','brw']}
@@ -586,10 +590,18 @@ class Var4D_Components(RunSpecs):
             n_state = self.state_prior.shape[0]
             self.state_prior_preco = np.zeros(n_state, dtype=np.float64)
 
+        self.progress_bars = {}
+        if self.store_intermediate_states:
+            self.interim_states = {'x': [], 'fun': []}
+
     def var4d_done(self):
         output_file = os.path.join(self.output_dir, 'optim_summary.nc')
         comp_dict = {'zlib': True, 'complevel': 6, 'shuffle': True}
         res = self.optim_result
+
+        if self.store_intermediate_states:
+            for k,v in self.interim_states.items():
+                self.interim_states[k] = np.array(v)
 
         with Dataset(output_file, 'w') as fid:
             fid.createDimension('cost_eval', len(self.optim_diags['cost_function']))
@@ -624,7 +636,10 @@ class Var4D_Components(RunSpecs):
 
             if 'hess_inv' in dir(res):
                 v = fid.createVariable('hess_inv', np.float64, ('n_state','n_state'), **comp_dict)
-                v[:] = res.hess_inv
+                if isinstance(res.hess_inv, optimize.LbfgsInvHessProduct):
+                    v[:] = res.hess_inv.todense()
+                else:
+                    v[:] = res.hess_inv
                 setattr(v, 'comment', 'Approximate inverse Hessian in preconditioned space')
 
             v = fid.createVariable('prior_flux', np.float64, ('n_state',), **comp_dict)
@@ -695,11 +710,13 @@ class Var4D_Components(RunSpecs):
 
         # now optimize
         minimize_args = dict(
-            method=optim_method, jac=self.calculate_gradient,
+            method=optim_method, jac=self.calculate_gradient, callback=self.loop_callback,
             options={'maxiter': max_iter, 'disp': self.verbose},
             )
         if use_hessian and optim_method in ['Newton-CG', 'trust-krylov', 'trust-ncg', 'trust-constr']:
             minimize_args['hessp'] = self.hessian_product
+        if self.store_intermediate_states and optim_method not in ['TNC', 'SLSQP', 'COBYLA']:
+            minimize_args['callback'] = self.loop_callback
         with Timer("Optimization finished in ", print=self.verbose):
             res = optimize.minimize(self.calculate_cost, self.state_prior_preco, **minimize_args)
 
@@ -764,6 +781,10 @@ class Var4D_Components(RunSpecs):
                 alpha = alpha*alpha_step
                 current_iter += 1
 
+    def loop_callback(self, intermediate_result):
+        self.interim_states['x'].append(intermediate_result.x)
+        self.interim_states['fun'].append(intermediate_result.fun)
+
     def state_to_flux(self, state_vector):
         return self.state_prior + np.matmul(self.L, state_vector)
 
@@ -794,7 +815,7 @@ class Var4D_Components(RunSpecs):
         return LTHTRinvHLx
 
     def calculate_cost(self, state_vector):
-        with Timer("Cost calculated in ", print=self.verbose):
+        with Timer("Cost calculated in ", print=self.verbose) as tm:
             # convert to flux
             flux_vec = self.state_to_flux(state_vector)
             # simulate obs
@@ -805,6 +826,7 @@ class Var4D_Components(RunSpecs):
             bg_cost = 0.5 * np.sum(state_vector**2)
             total_cost = obs_cost + bg_cost
             self.optim_diags['cost_function'].append(total_cost)
+            tm['postfix'] = '(J = %.4g)'%total_cost
 
         if 'cost' in self.progress_bars:
             self.progress_bars['cost'].update()
@@ -812,7 +834,7 @@ class Var4D_Components(RunSpecs):
         return total_cost
 
     def calculate_gradient(self, state_vector):
-        with Timer("Gradient calculated in ", print=self.verbose):
+        with Timer("Gradient calculated in ", print=self.verbose) as tm:
             # assume that self.mdm has already been calculated and is the most current
             if not 'mdm' in dir(self): # can happen e.g., for CG algorithms
                 # convert to flux
@@ -830,6 +852,7 @@ class Var4D_Components(RunSpecs):
             self.optim_diags['iter'] += 1
             gradient_norm = np.sqrt(np.sum(total_gradient**2))
             self.optim_diags['gradient_norm'].append(gradient_norm)
+            tm['postfix'] = u'(\u23b8\u2202J/\u2202\u03be\u23b9 = %.4g)'%gradient_norm
 
         if 'grad' in self.progress_bars:
             self.progress_bars['grad'].update()
