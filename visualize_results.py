@@ -115,7 +115,7 @@ class Visualize_Obs(Visualize):
         bpad = 0.1
         ht_pad = 0.6
         wd_pad = 0.5
-        tpad = 0.1
+        tpad = 0.3
         fig_width = lpad + num_sites*width + (num_sites-1)*wd_pad + rpad
         fig_height = bpad + diff_height + ht_pad + height + tpad
         fig = plt.figure(figsize=(fig_width, fig_height))
@@ -162,7 +162,7 @@ class Visualize_Obs(Visualize):
             diff_ax.grid(True, ls='--')
 
             fig.text((lpad+0.5*width+iax*(width+wd_pad))/fig_width, (bpad+diff_height+0.05)/fig_height, 'Decimal year', ha='center', va='bottom', size=14)
-            fig.text((lpad+(iax+1)*width+iax*wd_pad-0.1)/fig_width, 1.-(tpad+0.1)/fig_height, site.upper(), ha='right', va='top', size=14, bbox={'boxstyle':'round', 'facecolor':'wheat', 'alpha':0.5})
+            fig.text((lpad+0.5*width+iax*(width+wd_pad))/fig_width, 1.0-0.5*tpad/fig_height, site.upper(), ha='center', va='center', size=14)
 
         fig.text(0.05/fig_width, (bpad+diff_height+ht_pad+0.5*height)/fig_height, u'CO\u2082 (ppm)', ha='left', va='center', size=14, rotation=90)
         fig.text(0.05/fig_width, (bpad+0.5*diff_height)/fig_height, 'Difference (ppm)', ha='left', va='center', size=14, rotation=90)
