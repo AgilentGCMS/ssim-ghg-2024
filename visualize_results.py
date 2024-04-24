@@ -4,6 +4,7 @@ import os, copy, calendar
 from datetime import datetime, timedelta
 from convert_jacobian import Paths
 import numpy as np
+from matplotlib.ticker import MaxNLocator
 
 class Visualize(Paths):
 
@@ -15,7 +16,9 @@ class Visualize(Paths):
             'apri': {'c': 'xkcd:cerulean', 'mec': 'xkcd:cerulean', 'mfc': 'xkcd:powder blue', 'marker': 'd', 'ms': 5, 'mew': 0.5},
             'apos': {'c': 'xkcd:orange red', 'mec': 'xkcd:orange red', 'mfc': 'xkcd:baby pink', 'marker': 's', 'ms': 5, 'mew': 0.5},
             }
-        self.legend_props = dict(fontsize=14, labelspacing=0.2, handlelength=1, handletextpad=0.25, borderpad=0.2)
+        self.legend_props = dict(fontsize=12, labelspacing=0.2, handlelength=1, handletextpad=0.25, borderpad=0.2)
+        self.tick_font_property = dict(fontsize=12, family='Inconsolata')
+        self.label_font_property = dict(fontsize=14, family='Inconsolata')
 
 class Visualize_Fluxes(Visualize):
 
@@ -33,7 +36,7 @@ class Visualize_Fluxes(Visualize):
         lpad = 0.6
         rpad = 0.1
         bpad = 0.5
-        wd_pad = 0.3
+        wd_pad = 0.4
         tpad = 0.3
         fig_width = lpad + num_regions*width + (num_regions-1)*wd_pad + rpad
         fig_height = bpad + height + tpad
@@ -77,6 +80,7 @@ class Visualize_Fluxes(Visualize):
 
                 leg = plot_ax.legend(loc='best', numpoints=1, **self.legend_props)
                 leg.set_draggable(True)
+                plt.setp(leg.texts, family=self.label_font_property['family'])
 
                 xtick_locs = time_vals[::3]
                 xtick_labels = [d.strftime('%b\n%Y') for d in month_times[::3]]
@@ -85,16 +89,19 @@ class Visualize_Fluxes(Visualize):
                 xtick_labels.append('2015\nTotal')
 
                 plot_ax.set_xticks(xtick_locs)
-                plot_ax.set_xticklabels(xtick_labels, fontsize=12)
+                plot_ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+                
+                plot_ax.set_xticklabels(xtick_labels, **self.tick_font_property)
+                plt.setp(plot_ax.get_yticklabels(), **self.tick_font_property)
 
                 plot_ax.grid(True, ls='--')
                 plot_ax.axvspan(time_vals[-1]+0.5, time_vals[-1]+1.5, ec=None, fc='0.75')
 
                 plot_ax.set_xlim(time_vals[0]-0.5, time_vals[-1]+1.5)
 
-                fig.text((lpad+0.5*width+iax*(width+wd_pad))/fig_width, 1.0-0.5*tpad/fig_height, region.title(), ha='center', va='center', size=14)
+                fig.text((lpad+0.5*width+iax*(width+wd_pad))/fig_width, 1.0-0.5*tpad/fig_height, region.title(), ha='center', va='center', **self.label_font_property)
 
-        fig.text(0.05/fig_width, (bpad+0.5*height)/fig_height, u'CO\u2082 flux (PgC/year)', ha='left', va='center', size=14, rotation=90)
+        fig.text(0.05/fig_width, (bpad+0.5*height)/fig_height, u'CO\u2082 flux (PgC/year)', ha='left', va='center', rotation=90, **self.label_font_property)
 
 class Visualize_Obs(Visualize):
 
@@ -146,15 +153,16 @@ class Visualize_Obs(Visualize):
 
             leg = plot_ax.legend(loc='best', numpoints=2, **self.legend_props)
             leg.set_draggable(True)
+            plt.setp(leg.texts, family=self.label_font_property['family'])
 
             diff_ax.plot(times, model_apri-obs, **self.plot_styles['apri'])
             diff_ax.plot(times, model_apos-obs, **self.plot_styles['apos'])
 
             plot_ax.set_xlim(xmin, xmax)
             diff_ax.set_xlim(xmin, xmax)
-            plt.setp(plot_ax.get_yticklabels(), size=12)
-            plt.setp(diff_ax.get_yticklabels(), size=12)
-            plt.setp(plot_ax.get_xticklabels(), size=12)
+            plt.setp(plot_ax.get_yticklabels(), **self.tick_font_property)
+            plt.setp(diff_ax.get_yticklabels(), **self.tick_font_property)
+            plt.setp(plot_ax.get_xticklabels(), **self.tick_font_property)
 
             plot_ax.locator_params(axis='x', nbins=5)
             diff_ax.locator_params(axis='x', nbins=5)
@@ -164,5 +172,5 @@ class Visualize_Obs(Visualize):
             fig.text((lpad+0.5*width+iax*(width+wd_pad))/fig_width, (bpad+diff_height+0.05)/fig_height, 'Decimal year', ha='center', va='bottom', size=14)
             fig.text((lpad+0.5*width+iax*(width+wd_pad))/fig_width, 1.0-0.5*tpad/fig_height, site.upper(), ha='center', va='center', size=14)
 
-        fig.text(0.05/fig_width, (bpad+diff_height+ht_pad+0.5*height)/fig_height, u'CO\u2082 (ppm)', ha='left', va='center', size=14, rotation=90)
-        fig.text(0.05/fig_width, (bpad+0.5*diff_height)/fig_height, 'Difference (ppm)', ha='left', va='center', size=14, rotation=90)
+        fig.text(0.05/fig_width, (bpad+diff_height+ht_pad+0.5*height)/fig_height, u'CO\u2082 (ppm)', ha='left', va='center', rotation=90, **self.label_font_property)
+        fig.text(0.05/fig_width, (bpad+0.5*diff_height)/fig_height, 'Difference (ppm)', ha='left', va='center', rotation=90, **self.label_font_property)
