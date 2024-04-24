@@ -510,7 +510,7 @@ class Var4D_Components(RunSpecs):
 
         return obs_err
 
-    def setup_obs(self, true_flux='CT2022', trans_model='GC', obs_to_assim):
+    def setup_obs(self, true_flux='CT2022', trans_model='GC', obs_to_assim={}):
         if true_flux.lower() == 'ct2022':
             state_vec = self.flux_cons.construct_state_vector_from_ct2022(smush_regions=False)
         elif true_flux.lower() == 'sib4':
