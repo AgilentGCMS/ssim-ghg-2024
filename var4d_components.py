@@ -574,7 +574,7 @@ class Var4D_Components(RunSpecs):
             # set up the prior, which is SiB4
             self.state_prior = self.flux_cons.construct_state_vector_from_sib4()
             # set up prior uncertainty, which (let's say) is 25% of the prior
-            self.unc_prior = 0.25 * np.abs(self.state_prior)
+            self.unc_prior = 0.25 * np.abs(self.state_prior) # MAKE THIS FLEXIBLE
             # set up prior covariance matrix, assuming a 2 month decay and no cross-region correlation
             prior_corr = self.setup_corr(temp_corr=2.0)
             # make correlation expicitly symmetric to avoid roundoff errors
