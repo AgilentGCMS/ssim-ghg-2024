@@ -443,7 +443,9 @@ class Var4D_Components(RunSpecs):
         self.obs_cons = Observations(verbose=self.verbose)
         self.progress_bars = {}
 
-    def setup_obs_errors(self, obs_to_assim=[]):
+    def setup_obs_errors(self, **kwargs):
+        # kwargs is a dictionary such as {'oco2': True, 'tccon': True, 'is': True, 'mbl': True, 'sites': ['mlo','spo','brw']}
+        # by default nothing is assimilated
         # first get the total number of obs
         with Dataset(self.obs_nc, 'r') as fid:
             nobs = len(fid.dimensions['nobs'])
@@ -459,16 +461,16 @@ class Var4D_Components(RunSpecs):
         # convert everyything in obs_to_assim to lowercase
         obs_assim_ = [s.lower() for s in obs_to_assim]
 
-        if 'oco2' in obs_assim_:
+        if 'oco2' in kwargs and kwargs['oco2']:
             obs_err[oco2_idx] = mip_mdm[oco2_idx]
 
-        if 'tccon' in obs_assim_:
+        if 'tccon' in kwargs and kwargs['tccon']:
             obs_err[tccon_idx] = mip_mdm[tccon_idx]
 
-        if 'is' in obs_assim_:
+        if 'is' in kwargs and kwargs['is']:
             obs_err[is_idx] = mip_mdm[is_idx]
 
-        if 'mbl' in obs_assim_:
+        if 'mbl' in kwargs and kwargs['mbl']:
             # make list of MBL datasets
             mbl_datasets = []
             for site in self.obs_cons.mbl_sites:
@@ -478,11 +480,11 @@ class Var4D_Components(RunSpecs):
             mbl_idx = self.obs_cons.get_indices_from_datasets(mbl_datasets)
             obs_err[mbl_idx] = mip_mdm[mbl_idx]
 
-        if 'noaa_towers' in obs_assim_:
+        if 'noaa_towers' in kwargs and kwargs['noaa_towers']:
             tower_idx = self.obs_cons.get_indices_from_datasets(self.obs_cons.noaa_tall_tower_datasets)
             obs_err[tower_idx] = mip_mdm[tower_idx]
 
-        if 'noaa_observatories' in obs_assim_:
+        if 'noaa_observatories' in kwargs and kwargs['noaa_observatories']:
             obs_datasets = []
             for site in self.obs_cons.noaa_observatories:
                 ds_ = self.obs_cons.get_datasets_from_site(site)
@@ -491,9 +493,24 @@ class Var4D_Components(RunSpecs):
             obs_idx = self.obs_cons.get_indices_from_datasets(obs_datasets)
             obs_err[obs_idx] = mip_mdm[obs_idx]
 
+        # can specify individual site codes (flask only)
+        if 'sites' in kwargs:
+            assim_datasets = []
+            for site in kwargs['sites']:
+                ds_ = self.obs_cons.get_datasets_from_site(site)
+                ds_ = [s for s in ds_ if 'flask' in s]
+                assim_datasets.extend(ds_)
+            assim_idx = self.obs_cons.get_indices_from_datasets(assim_datasets)
+            obs_err[assim_idx] = mip_mdm[assim_idx]
+
+        # finally, can specify individual datasets to assimilate
+        if 'datasets' in kwargs:
+            assim_idx = self.obs_cons.get_indices_from_datasets(kwargs['datasets'])
+            obs_err[assim_idx] = mip_mdm[assim_idx]
+
         return obs_err
 
-    def setup_obs(self, true_flux='CT2022', trans_model='GC', obs_to_assim=[]):
+    def setup_obs(self, true_flux='CT2022', trans_model='GC', obs_to_assim):
         if true_flux.lower() == 'ct2022':
             state_vec = self.flux_cons.construct_state_vector_from_ct2022(smush_regions=False)
         elif true_flux.lower() == 'sib4':
@@ -549,10 +566,10 @@ class Var4D_Components(RunSpecs):
 
         return cov_matrix
 
-    def var4d_setup(self):
+    def var4d_setup(self, obs_to_assim={}):
         with Timer("Created true obs in ", print=self.verbose):
             # set up the obs with CT2022 as truth
-            self.setup_obs(true_flux='CT2022', obs_to_assim=['noaa_observatories'])
+            self.setup_obs(true_flux='CT2022', obs_to_assim=obs_to_assim)
         with Timer("Prior fluxes and covariance setup in ", print=self.verbose):
             # set up the prior, which is SiB4
             self.state_prior = self.flux_cons.construct_state_vector_from_sib4()

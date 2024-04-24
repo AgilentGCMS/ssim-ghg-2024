@@ -15,7 +15,7 @@ class Paths(object):
             ]
         output_folder_order = [
             os.path.join(os.environ['HOME'], 'inversion_output'), # GHG Center's JupyterHub
-            os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/2024/SSIM-GHG/output'), # Sourish's laptop
+            os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/2024/output'), # Sourish's laptop
             ]
         for folder_i, folder_o in zip(input_folder_order, output_folder_order):
             if os.path.isdir(folder_i):
