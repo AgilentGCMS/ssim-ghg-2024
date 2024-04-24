@@ -436,6 +436,7 @@ class Var4D_Components(RunSpecs):
         super(Var4D_Components, self).__init__()
         self.project = project
         self.verbose = kwargs['verbose'] if 'verbose' in kwargs else True
+        self.store_intermediate_states = kwargs['store_intermediate'] if 'store_intermediate' in kwargs else False
         self.output_dir = os.path.join(self.output_root, project)
         # create a bunch of instances of the classes required
         self.trans_op = Transport(verbose=self.verbose)
@@ -668,7 +669,7 @@ class Var4D_Components(RunSpecs):
         optim_method = kwargs['optim_method'] if 'optim_method' in kwargs else 'BFGS'
         use_hessian = kwargs['hessian'] if 'hessian' in kwargs else False
         obs_to_assim = kwargs['obs_to_assim'] if 'obs_to_assim' in kwargs else {'sites': ['mlo','spo']}
-        
+
         self.var4d_setup(obs_to_assim=obs_to_assim)
 
         # Print number of function and adjoint evaluations
