@@ -458,9 +458,6 @@ class Var4D_Components(RunSpecs):
         # by default assimilate nothing
         obs_err[:] = self.obs_cons.unassim_mdm
 
-        # convert everyything in obs_to_assim to lowercase
-        obs_assim_ = [s.lower() for s in obs_to_assim]
-
         if 'oco2' in kwargs and kwargs['oco2']:
             obs_err[oco2_idx] = mip_mdm[oco2_idx]
 
@@ -519,7 +516,7 @@ class Var4D_Components(RunSpecs):
             raise RuntimeError('Unknown true flux %s specified'%true_flux)
 
         self.obs_vec = self.trans_op.transport(state_vec, model=trans_model, add_bg=False)
-        self.obs_err = self.setup_obs_errors(obs_to_assim)
+        self.obs_err = self.setup_obs_errors(**obs_to_assim)
         self.true_flux = state_vec
 
     def setup_corr(self, temp_corr, **kwargs):
@@ -670,8 +667,9 @@ class Var4D_Components(RunSpecs):
         max_iter = kwargs['max_iter'] if 'max_iter' in kwargs else 50
         optim_method = kwargs['optim_method'] if 'optim_method' in kwargs else 'BFGS'
         use_hessian = kwargs['hessian'] if 'hessian' in kwargs else False
-
-        self.var4d_setup()
+        obs_to_assim = kwargs['obs_to_assim'] if 'obs_to_assim' in kwargs else {'sites': ['mlo','spo']}
+        
+        self.var4d_setup(obs_to_assim=obs_to_assim)
 
         # Print number of function and adjoint evaluations
         if not self.verbose:
