@@ -10,7 +10,7 @@ class Paths(object):
         super(Paths, self).__init__()
         # define the order in which paths will be searched for input data
         input_folder_order = [
-            '/home/jovyan/shared/SSIM-GHG', # on GHG Center's JupyterHub
+            os.path.join(os.environ['HOME'], 'shared/SSIM-GHG'), # on GHG Center's JupyterHub
             os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/2024/SSIM-GHG'), # Sourish's laptop
             ]
         output_folder_order = [
