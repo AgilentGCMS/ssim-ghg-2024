@@ -606,14 +606,18 @@ class Var4D_Components(RunSpecs):
         with Dataset(output_file, 'w') as fid:
             fid.createDimension('cost_eval', len(self.optim_diags['cost_function']))
             fid.createDimension('grad_eval', len(self.optim_diags['gradient_norm']))
+            fid.createDimension('n_state', res.x.shape[0])
+            fid.createDimension('n_region', self.n_region)
+            fid.createDimension('n_month', self.n_month)
+            fid.createDimension('n_ymd', 3)
 
-            v = fid.createVariable('cost_function', np.float64, ('cost_eval',), **comp_dict)
+            v = fid.createVariable('cost_function_evals', np.float64, ('cost_eval',), **comp_dict)
             v[:] = np.array(self.optim_diags['cost_function'])
-            setattr(v, 'comment', 'Cost function for each iteration')
+            setattr(v, 'comment', 'All cost function evaluations during optimization')
 
-            v = fid.createVariable('gradient_norm', np.float64, ('grad_eval',), **comp_dict)
+            v = fid.createVariable('gradient_norm_evals', np.float64, ('grad_eval',), **comp_dict)
             v[:] = np.array(self.optim_diags['gradient_norm'])
-            setattr(v, 'comment', 'L2 norm of the gradient of the cost function for each iteration')
+            setattr(v, 'comment', 'L2 norm of all gradient evaluations during optimization')
 
             setattr(fid, 'iterations', np.int32(res.nit))
             setattr(fid, 'converged', np.int32(res.success))
@@ -623,8 +627,6 @@ class Var4D_Components(RunSpecs):
             setattr(fid, 'nit', np.int32(res.nit))
             if 'nhev' in dir(res):
                 setattr(fid, 'nhev', np.int32(res.nhev))
-
-            fid.createDimension('n_state', res.x.shape[0])
 
             v = fid.createVariable('x_final', np.float64, ('n_state',), **comp_dict)
             v[:] = res.x
@@ -642,26 +644,35 @@ class Var4D_Components(RunSpecs):
                     v[:] = res.hess_inv
                 setattr(v, 'comment', 'Approximate inverse Hessian in preconditioned space')
 
-            v = fid.createVariable('prior_flux', np.float64, ('n_state',), **comp_dict)
-            v[:] = self.state_prior
-            setattr(v, 'comment', 'Prior flux vector')
+            if self.store_intermediate_states:
+                fid.createDimension('iterations', res.nit)
+                v = fid.createVariable('cost_function', np.float64, ('iterations',), **comp_dict)
+                v[:] = self.interim_states['fun']
+                setattr(v, 'comment', 'Cost function for each iteration of optimizer')
+
+                v = fid.createVariable('states', np.float64, ('iterations', 'n_state'), **comp_dict)
+                v[:] = self.interim_states['x']
+                setattr(v, 'comment', 'Value of state vector in preconditioned space for each iteration of optimizer')
+
+            v = fid.createVariable('prior_flux', np.float64, ('n_region','n_month'), **comp_dict)
+            for i in range(self.n_region):
+                v[i] = self.state_prior[i*self.n_month:(i+1)*self.n_month]
+            setattr(v, 'comment', 'Prior flux')
             setattr(v, 'units', 'Kg CO2/m^2/s')
 
-            v = fid.createVariable('poste_flux', np.float64, ('n_state',), **comp_dict)
-            v[:] = self.state_poste
-            setattr(v, 'comment', 'Posterior flux vector')
+            v = fid.createVariable('poste_flux', np.float64, ('n_region','n_month'), **comp_dict)
+            for i in range(self.n_region):
+                v[i] = self.state_poste[i*self.n_month:(i+1)*self.n_month]
+            setattr(v, 'comment', 'Posterior flux')
             setattr(v, 'units', 'Kg CO2/m^2/s')
 
-            v = fid.createVariable('true_flux', np.float64, ('n_state',), **comp_dict)
-            v[:] = self.true_flux
-            setattr(v, 'comment', 'The flux vector that was used to create the obs')
+            v = fid.createVariable('true_flux', np.float64, ('n_region','n_month'), **comp_dict)
+            for i in range(self.n_region):
+                v[i] = self.true_flux[i*self.n_month:(i+1)*self.n_month]
+            setattr(v, 'comment', 'The flux that was used to create the obs')
             setattr(v, 'units', 'Kg CO2/m^2/s')
 
             assert self.n_region == len(self.flux_cons.transcom_regions), "Length of n_region does not match number of TRANSCOM regions"
-
-            fid.createDimension('n_region', self.n_region)
-            fid.createDimension('n_month', self.n_month)
-            fid.createDimension('n_ymd', 3)
 
             v = fid.createVariable('region_areas', np.float64, ('n_region',), **comp_dict)
             v[:] = self.flux_cons.transcom_region_areas

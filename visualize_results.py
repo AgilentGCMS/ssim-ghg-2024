@@ -54,11 +54,9 @@ class Visualize_Fluxes(Visualize):
             flux_conversion_factor = (12.01/44.01) * (1.0E-12 * 86400.0 * 365.25) # from Kg CO2/s to Pg C/year
             for iax,region in enumerate(region_names):
                 region_index = region_names_in_file.index(region.lower())
-                ibeg = n_month*region_index
-                iend = ibeg+n_month
-                prior_flux = fid.variables['prior_flux'][ibeg:iend] * region_areas[region_index] * flux_conversion_factor # PgC/year
-                poste_flux = fid.variables['poste_flux'][ibeg:iend] * region_areas[region_index] * flux_conversion_factor # PgC/year
-                true_flux  = fid.variables['true_flux'][ibeg:iend]  * region_areas[region_index] * flux_conversion_factor # PgC/year
+                prior_flux = fid.variables['prior_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
+                poste_flux = fid.variables['poste_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
+                true_flux  = fid.variables['true_flux'][region_index]  * region_areas[region_index] * flux_conversion_factor # PgC/year
 
                 time_vals = np.arange(len(month_times))
 
@@ -90,7 +88,7 @@ class Visualize_Fluxes(Visualize):
 
                 plot_ax.set_xticks(xtick_locs)
                 plot_ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-                
+
                 plot_ax.set_xticklabels(xtick_labels, **self.tick_font_property)
                 plt.setp(plot_ax.get_yticklabels(), **self.tick_font_property)
 
