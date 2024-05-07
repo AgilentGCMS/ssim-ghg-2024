@@ -641,17 +641,6 @@ def calculate_Xgas(gas_level,p_level,q_level):
     return xgas, h
 
 
-
-#def calculate_Xgas_layer(gas_layer,p_diff,q_layer):
-#    #Calculate the column density of dry air per unit pressure
-#    c_ave = (1.-q_layer)/g/M
-#    #Calcualte the pressure weighting function (PWF)
-#    h = (c_ave * p_diff) / np.sum(c_ave * p_diff)
-#    #Calculate the column-average dry-air mole-fraction of the gas
-#    xgas = np.sum(h * gas_layer)
-#    return xgas, h
-
-
 #Find the layer average for a given array of levels
 def layer_average(levels):
     layers=np.empty((len(levels)-1)) #Layer pressures
@@ -659,16 +648,19 @@ def layer_average(levels):
         layers[i] = (levels[i+1]+levels[i])/2.0
     return layers
 
+
 #Find the index of the nearest value in an array
 def find_nearest(array,values):
     indicies=np.zeros((len(values)),dtype=int)
     for i in range(len(values)): indicies[i] = np.abs(array-values[i]).argmin()
     return indicies
 
+
 #Calculate the solar flux for each band's average wavelength. Ignoring all other complexities with the solar spectrum for now.
 def planck(T_temp,wl_temp):
     B_temp=2.0*h*c**2.0/wl_temp**5.0/(np.exp(h*c/k/wl_temp/T_temp)-1.0)
     return B_temp
+
 
 def calculate_n_dry_air(p_diff,q_layer):
   n_dry_air = p_diff * Na / M / g * (1.-q_layer)
