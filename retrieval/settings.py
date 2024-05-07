@@ -1,6 +1,10 @@
 import numpy as np
+import os
 
-#Default settings
+# Default settings
+
+# Where are the ABSCO tables kept?
+ABSCO_TABLE_FOLDER = os.path.join(os.environ['HOME'], 'shared/ssim-ghg-data/retrieval_example')
 
 #0.76 um O2 A-band, 1.60 um weak CO2 band, 1.65 um CH4 band
 band_max_wn = np.array([13190.0,6285.0,6150.0]) #cm^-1
