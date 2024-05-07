@@ -49,7 +49,6 @@ class ForwardFunction:
         self.band_min_wn = band_min_wn
         self.band_max_wn = band_max_wn
         self.band_spectral_resolutions = band_spectral_resolutions
-        self.absco_data = absco_data
         self.band_molecules = band_molecules
         self.P_aerosol = P_aerosol
         self.ssa_aerosol = ssa_aerosol
@@ -142,7 +141,7 @@ class ForwardFunction:
             tau_above_aerosol_star_temp_ch4 = np.zeros((len(self.band_absco_res_wn[i]),len(self.p_layer)))
 
             for j in range(len(self.band_molecules[i])):
-                molecules_sigma_temp = sigma_lookup(self.band_molecules[i][j],self.band_absco_res_wn[i],self.p_layer,self.T_layer,self.absco_data)
+                molecules_sigma_temp = sigma_lookup(self.band_molecules[i][j],self.band_absco_res_wn[i],self.p_layer,self.T_layer,absco_data)
 
                 #Tau is the cross section times number density times dz. We can assume hydrostatic equilibrium and the ideal gas law to solve it using this equation instead:
                 if self.band_molecules[i][j] == 'o2':
@@ -409,7 +408,7 @@ class Retrieval:
         self.iterations = 0
         self.chisq_reduced_previous = 99999.0
 
-    def run(self, x, model_prior, model_true, chisq_threshold=s.chisq_threshold):
+    def run(self, x, model_prior, model_true, absco_data, chisq_threshold=s.chisq_threshold):
 
         #Set the initial guess to the prior
         x["ret"] = deepcopy(x["prior"])
@@ -427,7 +426,7 @@ class Retrieval:
                 print("-----------")
 
             #Calculate y using the state vector, x
-            model_ret = self.forward_model(x, model_prior, jacobians=True)
+            model_ret = self.forward_model(x, model_prior, absco_data, jacobians=True)
 
             #Calculate chisq
             chisq = (((model_true.y-model_ret.y).dot(model_true.Sy_inv)).dot((model_true.y-model_ret.y).T))+\
@@ -459,7 +458,7 @@ class Retrieval:
                     print("Calculating the finite differencing Jacobian for",x["names"][i])
                     x_perturbed = deepcopy(x)
                     x_perturbed["ret"][i] += s.perturbation
-                    model_perturbed = self.forward_model(x_perturbed, model_prior, jacobians=False)
+                    model_perturbed = self.forward_model(x_perturbed, model_prior, absco_data, jacobians=False)
                     self.K[:,i] = ((model_perturbed.y - model_ret.y)/s.perturbation)
 
                 #If we have the analytical derivative for the current state, use it!
@@ -524,7 +523,7 @@ class Retrieval:
 
 
 
-    def forward_model(self, x, model_prior, jacobians=False):
+    def forward_model(self, x, model_prior, absco_data, jacobians=False):
 
         '''
         Yeah
@@ -548,7 +547,7 @@ class Retrieval:
             else: tau_aerosol = None
 
             #Call the foward function with info from the prior and the updated state vector elements
-            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,absco_data=model_prior.absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
+            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
 
             #Calculate analytical derivative
             model.y_k = np.zeros((len(model.y),len(x["ret"])))
@@ -575,7 +574,7 @@ class Retrieval:
             tau_aerosol = None
 
             #Call the foward function with info from the prior and the updated state vector elements
-            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=np.zeros(len(model_prior.ch4)),T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,absco_data=model_prior.absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
+            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=np.zeros(len(model_prior.ch4)),T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
 
             #Calculate analytical derivative
             model.y_k = np.zeros((len(model.y),len(x["ret"])))
@@ -598,7 +597,7 @@ class Retrieval:
             tau_aerosol = None
 
             #Call the foward function with info from the prior and the updated state vector elements
-            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=np.zeros(len(model_prior.co2)),ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,absco_data=model_prior.absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
+            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=np.zeros(len(model_prior.co2)),ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
 
             #Calculate analytical derivative
             model.y_k = np.zeros((len(model.y),len(x["ret"])))
