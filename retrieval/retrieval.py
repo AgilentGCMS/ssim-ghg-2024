@@ -37,7 +37,7 @@ class ForwardFunction:
         Yeah
         '''
 
-        self.SNR = SNR
+        self.SNR = SNR #Signal-to-noise-ratio
         self.sza_0 = sza_0
         self.sza = sza
         self.co2 = co2
