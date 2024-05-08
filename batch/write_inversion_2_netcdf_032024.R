@@ -1,6 +1,6 @@
-write_inversion_2_netcdfs=function(inv_object=ret2,prior_mean_ncdf="/discover/nobackup/projects/csu/aschuh/temp/prior_SiB4.nc",
+write_inversion_2_netcdfs=function(inv_object=ret2,prior_mean_ncdf=file.path(data_dir,"prior_SiB4.nc"),
                           #sensitivity.matrix="/discover/nobackup/projects/csu/aschuh/data/inversion_workshop_data/rdas/trunc_full_jacob_030624_with_dimnames_sib4_4x5_mask.rda",
-                          sample_number=100,output_dir="/discover/nobackup/projects/csu/aschuh/temp/example_inversion")
+                          sample_number=100,output_dir=output_dir)
 {
 #-- set.seed ?  
   
@@ -164,26 +164,26 @@ print("creating gridded fluxes....")
 con = nc_open(prior_mean_ncdf)
 NEE = ncvar_get(con,"NEE")
 nc_close(con)
-
 NEE_1x1 = aaply(NEE,3,.fun=function(x){expand_5x4_2_1x1(x)}) %>%
            aperm(c(2,3,1))
 
-tr_dir = paste(dir,"/data/",sep="")
+tr_dir = file.path(data_dir,"/transcom/",sep="")
 
 x_hat_matrix = matrix(inv_object$x_hat,nrow=24,byrow=FALSE)
 
 gridded_1x1_state = aaply(x_hat_matrix,1,.fun=function(x){
              transcom2grid(x,model.grid.x = 1,model.grid.y = 1,
-              file_location = tr_dir)}) %>% aperm(c(2,3,1))
+              file_location = data_dir)}) %>% aperm(c(2,3,1))
 
 gridded_1x1_mean_flux = NEE_1x1*gridded_1x1_state
 
 gridded_1x1_state_samples = aaply(samps_array,c(1,2),.fun=function(x){transcom2grid(x,model.grid.x = 1,
-                                      model.grid.y = 1,file_location = tr_dir)}) %>%
+                                      model.grid.y = 1,file_location = data_dir)}) %>%
                              aperm(c(3,4,2,1))
 
 gridded_1x1_flux_samples = array(NA,dim=c(dim(gridded_1x1_mean_flux),sample_number))
 
+    
 #-- need to look for cores to use and foreach/parallel/parapply
 #for(i in 1:sample_number){
 #  tmp_state = gridded_1x1_state_samples[,,i]
