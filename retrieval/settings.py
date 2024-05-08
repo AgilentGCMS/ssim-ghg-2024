@@ -1,4 +1,5 @@
 import numpy as np
+from find_nearest import find_nearest
 import os
 
 # Default settings
@@ -77,5 +78,53 @@ chisq_threshold = 1.01
 
 #Used in the finite differencing calculation for T and p
 perturbation = 0.001
+
+
+##############################################
+#Other spectral stuff that we only want to do once to save time
+
+#Band limits but in micrometers. Min/max flipped because we're going from wavenumber to wavelength
+band_min_um = 1e4/band_max_wn
+band_max_um = 1e4/band_min_wn
+
+#Using the spectral resolution in nm, convert to um and assume 3 channels per FWHM to get the number of spectral points in each band
+band_spectral_points = np.empty((len(band_max_wn)),dtype=int)
+for i in range(len(band_max_wn)):
+    band_spectral_points[i] = int(1000.*3./band_spectral_resolutions[i] * (band_max_um[i] - band_min_um[i]))
+
+#Create evenly spaced channels for each band for use in the spectral response function
+band_wn = []
+for i in range(len(band_max_wn)):
+    band_wn.append(np.linspace(band_min_wn[i],band_max_wn[i],band_spectral_points[i]))
+
+#Convert bands from wavenumber to wavelength in um
+band_wl = []
+for i in range(len(band_max_wn)):
+    band_wl.append((1.e4/band_wn[i])[::-1])
+
+#Channels in wavenumber but at ABSCO resolution (0.01 cm^-1)
+band_absco_res_wn = []
+for i in range(len(band_min_wn)):
+    band_absco_res_wn.append(np.linspace(band_min_wn[i],band_max_wn[i],int((band_max_wn[i]-band_min_wn[i])/0.01) + 1))
+
+#Calculate the resolving power of each band
+resolving_power_band = []
+for i in range(len(band_min_wn)):
+    resolving_power_band.append(np.mean(band_wl[i])/band_spectral_resolutions[i]*1e3)
+
+#Calculate standard deviations via FWHM of each band
+sigma_band = []
+for i in range(len(band_min_wn)):
+    sigma_band.append(np.median(band_absco_res_wn[i])/resolving_power_band[i]/(2.0*((2.0*np.log(2.0))**(0.5))))
+
+#Find the indicies of each instrument-res wavenumber in the high-res wavenumber array
+band_wn_index = []
+for i in range(len(band_min_wn)):
+    band_wn_index.append(find_nearest(band_absco_res_wn[i],band_wn[i]))
+
+#Calculate a big term used in the ILS function to save time
+ILS_Gaussian_term = []
+for i in range(len(band_min_wn)):
+  ILS_Gaussian_term.append(1.0/sigma_band[i]/((2.0*np.pi)**0.5) * np.exp(-(band_absco_res_wn[i][None,:]-band_absco_res_wn[i][band_wn_index[i][:,None]])**2.0 / 2.0 / sigma_band[i]**2.0))
 
 

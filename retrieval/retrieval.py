@@ -7,7 +7,6 @@ module_path = os.path.abspath(os.path.join('..'))
 if module_path not in sys.path:
     sys.path.append(module_path)
 import settings as s
-from mie import mie_phase_function
 from absco_lookup import sigma_lookup
 from copy import deepcopy
 
@@ -31,7 +30,8 @@ ILS_width = 5.0
 
 
 class ForwardFunction:
-    def __init__(self,SNR=s.SNR,sza_0=s.sza_0,sza=s.sza,co2=s.co2_true,ch4=s.ch4_true,T=s.T_true,p=s.p_true,q=s.q_true,albedo=s.albedo_true,band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_spectral_resolutions=s.band_spectral_resolutions,absco_data=None,band_molecules=s.band_molecules,P_aerosol=None,ssa_aerosol=None,qext_aerosol=None,height_aerosol=s.height_aerosol,tau_aerosol=s.tau_aerosol_true,measurement_error=False,jacobians=False):
+    def __init__(self,SNR=s.SNR,sza_0=s.sza_0,sza=s.sza,co2=s.co2_true,ch4=s.ch4_true,T=s.T_true,p=s.p_true,q=s.q_true,albedo=s.albedo_true,band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_spectral_resolutions=s.band_spectral_resolutions,band_min_um=s.band_min_um,band_max_um=s.band_max_um,band_spectral_points=s.band_spectral_points,band_wn=s.band_wn,band_wl=s.band_wl,band_absco_res_wn=s.band_absco_res_wn,resolving_power_band=s.resolving_power_band,sigma_band=s.sigma_band,band_wn_index=s.band_wn_index,ILS_Gaussian_term=s.ILS_Gaussian_term,absco_data=None,band_molecules=s.band_molecules,P_aerosol=None,ssa_aerosol=None,qext_aerosol=None,height_aerosol=s.height_aerosol,tau_aerosol=s.tau_aerosol_true,measurement_error=False,jacobians=False):
+
 
         '''
         Yeah
@@ -57,31 +57,17 @@ class ForwardFunction:
         self.tau_aerosol = tau_aerosol
         self.measurement_error = measurement_error
         self.jacobians = jacobians
+        self.band_min_um = band_min_um
+        self.band_max_um = band_max_um
+        self.band_spectral_points = band_spectral_points
+        self.band_wn = band_wn
+        self.band_wl = band_wl
+        self.band_absco_res_wn = band_absco_res_wn
+        self.resolving_power_band = resolving_power_band
+        self.sigma_band = sigma_band
+        self.band_wn_index = band_wn_index
+        self.ILS_Gaussian_term = ILS_Gaussian_term
 
-
-        #Band limits but in micrometers. Min/max flipped because we're going from wavenumber to wavelength
-        self.band_min_um = 1e4/self.band_max_wn
-        self.band_max_um = 1e4/self.band_min_wn
-
-        #Using the spectral resolution in nm, convert to um and assume 3 channels per FWHM to get the number of spectral points in each band
-        self.band_spectral_points = np.empty((len(self.band_max_wn)),dtype=int)
-        for i in range(len(self.band_max_wn)):
-            self.band_spectral_points[i] = int(1000.*3./self.band_spectral_resolutions[i] * (self.band_max_um[i] - self.band_min_um[i]))
-
-        #Create evenly spaced channels for each band for use in the spectral response function
-        self.band_wn = []
-        for i in range(len(self.band_max_wn)):
-            self.band_wn.append(np.linspace(self.band_min_wn[i],self.band_max_wn[i],self.band_spectral_points[i]))
-
-        #Convert bands from wavenumber to wavelength in um
-        self.band_wl = []
-        for i in range(len(self.band_max_wn)):
-            self.band_wl.append((1.e4/self.band_wn[i])[::-1])
-
-        #Channels in wavenumber but at ABSCO resolution (cm^-1)
-        self.band_absco_res_wn = []
-        for i in range(len(self.band_min_wn)):
-            self.band_absco_res_wn.append(np.linspace(self.band_min_wn[i],self.band_max_wn[i],int((self.band_max_wn[i]-self.band_min_wn[i])/0.01) + 1))
 
         #Approximately calculate the solar irradiance at our bands using Planck's law (assuming the Sun is 5800 K), then account for the solid angle of the Sun and convert into per um instead of per m.
         self.band_solar_irradiances = np.empty((len(self.band_min_wn)))
@@ -239,18 +225,10 @@ class ForwardFunction:
 
             I, I_albedo, I_aerosol, I_q, I_co2, I_ch4 = self.intensity(self.band_absco_res_wn[i],self.tau_star_band[i],self.tau_above_aerosol_star_band[i],self.tau_star_band_q[i],self.tau_above_aerosol_star_band_q[i],self.tau_star_band_co2[i],self.tau_above_aerosol_star_band_co2[i],self.tau_star_band_ch4[i],self.tau_above_aerosol_star_band_ch4[i],tau_aerosol_temp,self.ssa_aerosol[i],self.P_aerosol[i],self.qext_aerosol[i],self.mu,self.mu_0,self.m,self.albedo[i],self.band_solar_irradiances[i],self.jacobians)
 
-            #Calculate standard deviations via FWHM of each band
-            resolving_power_band = np.mean(self.band_wl[i])/self.band_spectral_resolutions[i]*1e3
-
-            sigma_band = np.median(self.band_absco_res_wn[i])/resolving_power_band / (2.0*((2.0*np.log(2.0))**(0.5)))
-
-            #Find the indicies of each instrument-res wavenumber in the high-res wavenumber array
-            band_wn_index = find_nearest(self.band_absco_res_wn[i],self.band_wn[i])
-
             #Calculate the spectral response function (with and without multiplying by intensity)
-            Sc_band, Sc_I_band, Sc_I_band_albedo, Sc_I_band_aerosol, Sc_I_band_q, Sc_I_band_co2, Sc_I_band_ch4 = self.spectral_response_function(band_wn_index,self.band_absco_res_wn[i],sigma_band,I,I_albedo,I_aerosol,I_q,I_co2,I_ch4,self.jacobians)
+            Sc_I_band, Sc_I_band_albedo, Sc_I_band_aerosol, Sc_I_band_q, Sc_I_band_co2, Sc_I_band_ch4 = self.spectral_response_function(self.band_wn_index[i],self.band_absco_res_wn[i],self.sigma_band[i],self.ILS_Gaussian_term[i],I,I_albedo,I_aerosol,I_q,I_co2,I_ch4,self.jacobians)
 
-            Sc_band_sum = np.sum(Sc_band,axis=1)
+            Sc_band_sum = np.sum(self.ILS_Gaussian_term[i],axis=1)
 
             #Calculate radiance (Rc) by integrating intensity times ILS, and reverse to plot in micrometers
             Rc_band = (np.sum(Sc_I_band,axis=1)/Sc_band_sum)[::-1]
@@ -278,9 +256,6 @@ class ForwardFunction:
         self.y_q = np.concatenate(self.R_band_q)
         self.y_co2 = np.concatenate(self.R_band_co2)
         self.y_ch4 = np.concatenate(self.R_band_ch4)
-
-        #FOR TESTING
-        np.random.seed(1124)
 
         noise = []
         for i in range(len(self.band_max_wn)):
@@ -336,9 +311,8 @@ class ForwardFunction:
 
 
     #Assume a Gaussian ILS
-    def spectral_response_function(self,band_wn_index,band,sigma_band,I_band,I_band_albedo,I_band_aerosol,I_band_q,I_band_co2,I_band_ch4,jacobians):
+    def spectral_response_function(self,band_wn_index,band,sigma_band,ILS_Gaussian_term,I_band,I_band_albedo,I_band_aerosol,I_band_q,I_band_co2,I_band_ch4,jacobians):
 
-        Sc_band = np.zeros((len(band_wn_index),len(band))) #wn instrument x wn absco
         Sc_I_band = np.zeros((len(band_wn_index),len(band))) #wn instrument x wn absco 
         Sc_I_band_albedo = np.zeros((len(band_wn_index),len(band))) #wn instrument x wn absco
         Sc_I_band_aerosol = np.zeros((len(band_wn_index),len(band))) #wn instrument x wn absco
@@ -347,50 +321,47 @@ class ForwardFunction:
         Sc_I_band_ch4 = np.zeros((len(band_wn_index),len(band),I_band_ch4.shape[1])) #wn instrument x wn absco x layers
 
         round_term = round(sigma_band*ILS_width*100.0)
-        Sc_band_term = 1.0/sigma_band/((2.0*np.pi)**0.5) * np.exp(-(band[None,:]-band[band_wn_index[:,None]])**2.0 / 2.0 / sigma_band**2.0)
 
         for i in range(len(band_wn_index)):
 
             #Dealing with the starting edge of the band
             if band[band_wn_index[i]] <= band[0]+sigma_band*ILS_width:
                 for j in range(0,int(band_wn_index[i]+round_term)):
-                    Sc_band[i,j] = Sc_band_term[i,j]
-                    Sc_I_band[i,j] = I_band[j] * Sc_band[i,j]
+                    Sc_I_band[i,j] = I_band[j] * ILS_Gaussian_term[i,j]
 
                     if jacobians:
-                        Sc_I_band_albedo[i,j] = I_band_albedo[j] * Sc_band[i,j]
-                        Sc_I_band_aerosol[i,j] = I_band_aerosol[j] * Sc_band[i,j]
-                        Sc_I_band_q[i,j,:] = I_band_q[j,:] * Sc_band[i,j]
-                        Sc_I_band_co2[i,j,:] = I_band_co2[j,:] * Sc_band[i,j]
-                        Sc_I_band_ch4[i,j,:] = I_band_ch4[j,:] * Sc_band[i,j]
+                        Sc_I_band_albedo[i,j] = I_band_albedo[j] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_aerosol[i,j] = I_band_aerosol[j] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_q[i,j,:] = I_band_q[j,:] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_co2[i,j,:] = I_band_co2[j,:] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_ch4[i,j,:] = I_band_ch4[j,:] * ILS_Gaussian_term[i,j]
 
             #Deadling with the trailing edge of the band
             elif band[band_wn_index[i]] >= band[len(band)-1]-sigma_band*ILS_width:
                 for j in range(int(band_wn_index[i]-round_term),len(band)):
-                    Sc_band[i,j] = Sc_band_term[i,j]
-                    Sc_I_band[i,j] = I_band[j] * Sc_band[i,j]
+                    Sc_I_band[i,j] = I_band[j] * ILS_Gaussian_term[i,j]
 
                     if jacobians:
-                        Sc_I_band_albedo[i,j] = I_band_albedo[j] * Sc_band[i,j]
-                        Sc_I_band_aerosol[i,j] = I_band_aerosol[j] * Sc_band[i,j]
-                        Sc_I_band_q[i,j,:] = I_band_q[j,:] * Sc_band[i,j]
-                        Sc_I_band_co2[i,j,:] = I_band_co2[j,:] * Sc_band[i,j]
-                        Sc_I_band_ch4[i,j,:] = I_band_ch4[j,:] * Sc_band[i,j]
+                        Sc_I_band_albedo[i,j] = I_band_albedo[j] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_aerosol[i,j] = I_band_aerosol[j] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_q[i,j,:] = I_band_q[j,:] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_co2[i,j,:] = I_band_co2[j,:] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_ch4[i,j,:] = I_band_ch4[j,:] * ILS_Gaussian_term[i,j]
 
+            #Most of the band
             else:
                 for j in range(int(band_wn_index[i]-round_term),int(band_wn_index[i]+round_term)):
-                    Sc_band[i,j] = Sc_band_term[i,j]
-                    Sc_I_band[i,j] = I_band[j] * Sc_band[i,j]
+                    Sc_I_band[i,j] = I_band[j] * ILS_Gaussian_term[i,j]
 
                     if jacobians:
-                        Sc_I_band_albedo[i,j] = I_band_albedo[j] * Sc_band[i,j]
-                        Sc_I_band_aerosol[i,j] = I_band_aerosol[j] * Sc_band[i,j]
-                        Sc_I_band_q[i,j,:] = I_band_q[j,:] * Sc_band[i,j]
-                        Sc_I_band_co2[i,j,:] = I_band_co2[j,:] * Sc_band[i,j]
-                        Sc_I_band_ch4[i,j,:] = I_band_ch4[j,:] * Sc_band[i,j]
+                        Sc_I_band_albedo[i,j] = I_band_albedo[j] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_aerosol[i,j] = I_band_aerosol[j] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_q[i,j,:] = I_band_q[j,:] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_co2[i,j,:] = I_band_co2[j,:] * ILS_Gaussian_term[i,j]
+                        Sc_I_band_ch4[i,j,:] = I_band_ch4[j,:] * ILS_Gaussian_term[i,j]
 
 
-        return Sc_band, Sc_I_band, Sc_I_band_albedo, Sc_I_band_aerosol, Sc_I_band_q, Sc_I_band_co2, Sc_I_band_ch4
+        return Sc_I_band, Sc_I_band_albedo, Sc_I_band_aerosol, Sc_I_band_q, Sc_I_band_co2, Sc_I_band_ch4
 
 
 
@@ -547,7 +518,7 @@ class Retrieval:
             else: tau_aerosol = None
 
             #Call the foward function with info from the prior and the updated state vector elements
-            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
+            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,band_min_um=model_prior.band_min_um,band_max_um=model_prior.band_max_um,band_spectral_points=model_prior.band_spectral_points,band_wn=model_prior.band_wn,band_wl=model_prior.band_wl,band_absco_res_wn=model_prior.band_absco_res_wn,resolving_power_band=model_prior.resolving_power_band,sigma_band=model_prior.sigma_band,band_wn_index=model_prior.band_wn_index,ILS_Gaussian_term=model_prior.ILS_Gaussian_term,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
 
             #Calculate analytical derivative
             model.y_k = np.zeros((len(model.y),len(x["ret"])))
@@ -574,7 +545,7 @@ class Retrieval:
             tau_aerosol = None
 
             #Call the foward function with info from the prior and the updated state vector elements
-            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=np.zeros(len(model_prior.ch4)),T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
+            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=np.zeros(len(model_prior.ch4)),T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,band_min_um=model_prior.band_min_um,band_max_um=model_prior.band_max_um,band_spectral_points=model_prior.band_spectral_points,band_wn=model_prior.band_wn,band_wl=model_prior.band_wl,band_absco_res_wn=model_prior.band_absco_res_wn,resolving_power_band=model_prior.resolving_power_band,sigma_band=model_prior.sigma_band,band_wn_index=model_prior.band_wn_index,ILS_Gaussian_term=model_prior.ILS_Gaussian_term,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
 
             #Calculate analytical derivative
             model.y_k = np.zeros((len(model.y),len(x["ret"])))
@@ -597,7 +568,7 @@ class Retrieval:
             tau_aerosol = None
 
             #Call the foward function with info from the prior and the updated state vector elements
-            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=np.zeros(len(model_prior.co2)),ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
+            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=np.zeros(len(model_prior.co2)),ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,band_min_um=model_prior.band_min_um,band_max_um=model_prior.band_max_um,band_spectral_points=model_prior.band_spectral_points,band_wn=model_prior.band_wn,band_wl=model_prior.band_wl,band_absco_res_wn=model_prior.band_absco_res_wn,resolving_power_band=model_prior.resolving_power_band,sigma_band=model_prior.sigma_band,band_wn_index=model_prior.band_wn_index,ILS_Gaussian_term=model_prior.ILS_Gaussian_term,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
 
             #Calculate analytical derivative
             model.y_k = np.zeros((len(model.y),len(x["ret"])))
@@ -649,19 +620,13 @@ def layer_average(levels):
     return layers
 
 
-#Find the index of the nearest value in an array
-def find_nearest(array,values):
-    indicies=np.zeros((len(values)),dtype=int)
-    for i in range(len(values)): indicies[i] = np.abs(array-values[i]).argmin()
-    return indicies
-
-
 #Calculate the solar flux for each band's average wavelength. Ignoring all other complexities with the solar spectrum for now.
 def planck(T_temp,wl_temp):
     B_temp=2.0*h*c**2.0/wl_temp**5.0/(np.exp(h*c/k/wl_temp/T_temp)-1.0)
     return B_temp
 
 
+#Calculate the number of dry air molecules
 def calculate_n_dry_air(p_diff,q_layer):
   n_dry_air = p_diff * Na / M / g * (1.-q_layer)
   return n_dry_air
