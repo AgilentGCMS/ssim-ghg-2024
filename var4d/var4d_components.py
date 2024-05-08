@@ -238,11 +238,11 @@ class Transport(RunSpecs):
         super(Transport, self).__init__()
         self.verbose = kwargs['verbose'] if 'verbose' in kwargs else True
         self.jacobian_file = {
-            'GC': os.path.join(self.data_root, 'data/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask.nc'),
+            'GC': os.path.join(self.data_root, 'jacobians/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask.nc'),
             'TM5': None,
             }
         self.background = {
-            'GC': os.path.join(self.data_root, 'data/jacob_bgd_021624.nc'), # probably not correct
+            'GC': os.path.join(self.data_root, 'jacobians/jacob_bgd_021624.nc'), # probably not correct
             'TM5': None,
             }
         self.Jacobian = {}
