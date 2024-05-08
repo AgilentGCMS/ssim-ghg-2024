@@ -10,10 +10,10 @@ class Paths(object):
         super(Paths, self).__init__()
         # define the order in which paths will be searched for input data
         input_folder_order = [
-            os.path.join(os.environ['HOME'], 'shared/SSIM-GHG'), # on GHG Center's JupyterHub
+            os.path.join(os.environ['HOME'], 'shared/ssim-ghg-data/inversion_examples'), # on GHG Center's JupyterHub
             os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/2024/SSIM-GHG'), # Sourish's laptop
             ]
-        output_folder_order = [
+        output_folder_order = [ # for each input folder above, define an appropriate output folder
             os.path.join(os.environ['HOME'], 'inversion_output'), # GHG Center's JupyterHub
             os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/2024/output'), # Sourish's laptop
             ]
@@ -27,13 +27,13 @@ class Paths(object):
         else:
             raise RuntimeError('No suitable folder found with input data')
 
-        self.jacobi_rda = os.path.join(self.data_root, 'data/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask_hour_timestamping.rda')
-        self.jacobi_nc = os.path.join(self.data_root, 'data/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask.nc')
+        self.jacobi_rda = os.path.join(self.data_root, 'jacobians/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask_hour_timestamping.rda')
+        self.jacobi_nc = os.path.join(self.data_root, 'jacobians/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask.nc')
         self.obs_rda = os.path.join(self.data_root, 'obs/obs_catalog_041724_unit_pulse_hour_timestamp_witherrors.rda')
         self.obs_nc = os.path.join(self.data_root, 'obs/obs_catalog_041724_unit_pulse_hour_timestamp_witherrors.nc')
         self.obs_by_dataset = os.path.join(self.data_root, 'obs/obs_by_dataset.pickle')
-        self.bg_rda = os.path.join(self.data_root, 'data/jacob_bgd_021624.rda')
-        self.bg_nc = os.path.join(self.data_root, 'data/jacob_bgd_021624.nc')
+        self.bg_rda = os.path.join(self.data_root, 'jacobians/jacob_bgd_021624.rda')
+        self.bg_nc = os.path.join(self.data_root, 'jacobians/jacob_bgd_021624.nc')
 
 class Convert_RDA(Paths):
 
