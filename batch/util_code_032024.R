@@ -8,7 +8,7 @@ pull_true_transcom_flux = function(prior_flux_file,state_true)
   NEE_1x1 = aaply(NEE,3,.fun=function(x){expand_5x4_2_1x1(x)}) %>%
            aperm(c(2,3,1))
 
-  zz = aaply(NEE_1x1,3,.fun=function(x){grid2transcom(x,file_location=paste(dir,"/data/",sep=""))})
+  zz = aaply(NEE_1x1,3,.fun=function(x){grid2transcom(x,file_location=data_dir)})
   yy = matrix(state_true,nrow=24,byrow=FALSE)
   qq = zz[,-1]*yy
   transcom_fluxes_real = apply(qq,2,sum) *30.5*3600*24*1e3*0.5 * 1e-15 # ~ PgC/yr adjustment to prior
@@ -24,7 +24,7 @@ generate_observations = function(H,H_bgd,state_vector,err_obs=NULL){
 
 
 grid2transcom = function(mat,model.grid.x=1,model.grid.y=1,transcom=TRUE,
-                         file_location="/projects/sandbox/inversion_workshop_scripts/")
+                         file_location=data_dir)
 {
   tfile = paste(file_location,"transcom/TRANSCOM_mask_GEOS_Chem_",model.grid.y,"x",model.grid.x,".nc",sep="")
   afile = paste(file_location,"areas/area_",model.grid.x,"x",model.grid.y,".nc",sep="")
@@ -60,7 +60,7 @@ grid2transcom = function(mat,model.grid.x=1,model.grid.y=1,transcom=TRUE,
 
 
 transcom2grid = function(vect=rep(2,23),model.grid.x=1,model.grid.y=1,transcom=TRUE,
-                         file_location="/projects/sandbox/inversion_workshop_scripts/")
+                         file_location=data_dir)
 {
   tfile = paste(file_location,"transcom/TRANSCOM_mask_GEOS_Chem_",model.grid.y,"x",model.grid.x,".nc",sep="")
   afile = paste(file_location,"areas/area_",model.grid.x,"x",model.grid.y,".nc",sep="")
@@ -69,7 +69,7 @@ transcom2grid = function(vect=rep(2,23),model.grid.x=1,model.grid.y=1,transcom=T
   if(!file.exists(afile)){stop(paste("file:",afile," doesn't exist"))}
   
   grid_areas = load.ncdf(afile,vars=c("grid_cell_area"))$grid.cell.area
-  
+
   transfil = load.ncdf(tfile)
   if(model.grid.x==1 & model.grid.y==1){
     regions = transfil$mask64
@@ -125,6 +125,42 @@ expand_5x4_2_1x1 = function(x){
 #  gridded_5x4_flux_samples[,,,i] = aaply(gridded_5x4_mean_flux,3,.fun=function(x){x*tmp_state}) %>%
 #    aperm(c(2,3,1))
 #}
+
+# Time-stamp: <andyj.cmdl.noaa.gov:/ct/tools/R/load.ncdf4.r - 07 Nov 2011 (Mon) 15:26:41 MST>
+
+interpret.udunits.time <- function(vals,unitstring,tz="UTC") {
+  retval <- list()
+  retval$is.time <- FALSE
+  if(length(grep("^DAYS since", unitstring,ignore.case=TRUE))==1) {
+    retval$is.time <- TRUE
+    # length of string is a bad parsing heuristic, but works
+    # for everything so far.
+    #     21 chars if "days since 1900-01-01"
+    #     19 chars if "days since 1900-1-1"
+    retval$vals <- as.POSIXct(substr(unitstring,11,nchar(unitstring)),
+                              tz=tz) + vals*86400
+    retval$tz <- tz # UTC tzone is a presumption
+  }
+  if(length(grep("^SECONDS since", unitstring,ignore.case=TRUE))==1) {
+    retval$is.time <- TRUE
+    retval$vals <- as.POSIXct(substr(unitstring,15,nchar(unitstring)),
+                              tz=tz) + vals
+    retval$tz <- tz # UTC tzone is a presumption
+  }
+  if(length(grep("^HOURS since", unitstring,ignore.case=TRUE))==1) {
+    retval$is.time <- TRUE
+    retval$vals <- as.POSIXct(substr(unitstring,12,nchar(unitstring)),
+                              tz=tz) + vals*3600
+    retval$tz <- tz # UTC tzone is a presumption
+  }
+  if(length(grep("^decimal date", unitstring,ignore.case=TRUE))==1) {
+    retval$is.time <- TRUE
+    retval$vals <- decimal.to.POSIX(vals)
+    retval$tz <- tz # UTC tzone is a presumption
+  }
+  return(retval)
+}
+
 
 load.ncdf <- function (ncname, lowercase = TRUE, dims = TRUE, attribs = NULL, 
                        vars = NULL, verbose = FALSE) 
@@ -324,7 +360,7 @@ organize_data_for_plotting = function(prior_flux_netcdf="/Users/aschuh/test_outp
   cl <- makeCluster(detectCores() - 2, type = "FORK")
   
   d = load.ncdf(posterior_flux_netcdf)
-  post_tr_monthly <- parApply(cl,d$flux.samples,c(3,4),FUN=function(x){grid2transcom(x,file_location=paste(dir,"/data/",sep=""))}) %>% aperm(c(2,3,1)) 
+  post_tr_monthly <- parApply(cl,d$flux.samples,c(3,4),FUN=function(x){grid2transcom(x,file_location=data_dir)}) %>% aperm(c(2,3,1)) 
   #post_tr_monthly = aaply(d$flux.samples,c(3,4),.fun=function(x){grid2transcom(x)})
   post_tr_monthly = post_tr_monthly[,,2:23]  #drop transcom=0
   post_tr_monthly_global = apply(post_tr_monthly,c(1,2),sum)
@@ -332,7 +368,7 @@ organize_data_for_plotting = function(prior_flux_netcdf="/Users/aschuh/test_outp
   post_df = cbind(FLUX=as.vector(t(post_tr_annual)),KIND=rep("Post",length(post_tr_annual)),REGION=rep(1:22,dim(post_tr_annual)[1]))
   
   e = load.ncdf(prior_flux_netcdf)
-  prior_tr_monthly <- parApply(cl,e$flux.samples,c(3,4),FUN=function(x){grid2transcom(x,file_location=paste(dir,"/data/",sep=""))}) %>% aperm(c(2,3,1))
+  prior_tr_monthly <- parApply(cl,e$flux.samples,c(3,4),FUN=function(x){grid2transcom(x,file_location=data_dir)}) %>% aperm(c(2,3,1))
   #prior_tr_monthly = aaply(e$flux.samples,c(3,4),.fun=function(x){grid2transcom(x)})
   prior_tr_monthly = prior_tr_monthly[,,2:23] 
   prior_tr_monthly_global = apply(prior_tr_monthly,c(1,2),sum)
@@ -349,7 +385,7 @@ organize_data_for_plotting = function(prior_flux_netcdf="/Users/aschuh/test_outp
   
   
   #-- This calculate the "true" fluxes from original prior fluxes
-  transcom_fluxes_real = pull_true_transcom_flux(prior_flux_file=file.path(dir,"data/prior_SiB4.nc"),state_true=state_vector_true)
+  transcom_fluxes_real = pull_true_transcom_flux(prior_flux_file=file.path(data_dir,"priors/prior_SiB4.nc"),state_true=state_vector_true)
   transcom_fluxes_real_annual_avg = transcom_fluxes_real$annual_2yr
   transcom_fluxes_real_monthly_avg = transcom_fluxes_real$monthly
   transcom_fluxes_real_monthly_avg_global = apply(transcom_fluxes_real$monthly,c(1),sum)

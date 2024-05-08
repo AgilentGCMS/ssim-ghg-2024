@@ -2,7 +2,7 @@
 #-- PART III:    Basic inversion wrapper
 #################################################################################################
 
-invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL)
+invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL, DOF=FALSE)
 { 
   # H=jacob;R_diagonal=R_diagonal_in;P_0=sigma;y=y_in;H_bgd=jacob_bgd
   
@@ -52,6 +52,8 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL)
   #---  Digression to calc S, the influence/sensivity matrix, and associated DOF
   #---  need: diag(R2_diagonal_inv[subset_indicator_obs])%*%(H[subset_indicator_obs,])%*%P%*%t(H[subset_indicator_obs,])
   #---  calculated as tr(X %*% Y) as sum across rows of X * t(Y)
+
+if(DOF){
   S1 = R2_diagonal_inv * (H)
   S2 = t(P%*%t(H))
   S3 = S1*S2
@@ -62,7 +64,7 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL)
   print(paste("DFB:",sum_trB))  
   #----
   #----
-  
+  }else{sum_trS=NULL;sum_trB=NULL}
   
   apriori_obs = generate_observations(H=H,H_bgd=H_bgd,
                         state_vector=rep(0,(dim(H)[2])),err_obs=NULL)
