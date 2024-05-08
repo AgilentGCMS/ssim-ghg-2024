@@ -1,5 +1,6 @@
 import numpy as np
 import settings as s
+from find_nearest import find_nearest
 
 #Mie scattering
 
@@ -197,34 +198,7 @@ def mie(x_temp,n_temp,phase_res,wls):
   return S1,S2,Qext,Qsca,Qback,gsca,P11,P12
 
 
-def mie_phase_function(band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_spectral_resolutions=s.band_spectral_resolutions,d_aerosol=s.d_aerosol,n_aerosol=s.n_aerosol,sza=s.sza,sza_0=s.sza_0):
-
-  from retrieval import find_nearest as find_nearest
-
-  band_min_um = 1e4/band_max_wn
-  band_max_um = 1e4/band_min_wn
-
-  band_spectral_points = np.empty((len(band_max_wn)),dtype=int)
-  for i in range(len(band_max_wn)):
-    band_spectral_points[i] = int(1000.*3./band_spectral_resolutions[i] * (band_max_um[i] - band_min_um[i]))
-
-  #Create evenly spaced channels for each band for use in the spectral response function
-  band_wn = []
-  for i in range(len(band_min_wn)):
-    band_wn.append(np.linspace(band_min_wn[i],band_max_wn[i],band_spectral_points[i]))
-
-  #Convert bands from wavenumber to wavelength in um
-  band_wl = []
-  for i in range(len(band_min_wn)):
-    band_wl.append((1.e4/band_wn[i])[::-1])
-
-  band_absco_res_wn = []
-  for i in range(len(band_min_wn)):
-    band_absco_res_wn.append(np.linspace(band_min_wn[i],band_max_wn[i],int((band_max_wn[i]-band_min_wn[i])/0.01) + 1))
-
-  band_absco_res_wl = []
-  for i in range(len(band_min_wn)):
-    band_absco_res_wl.append(1e4/np.linspace(band_min_wn[i],band_max_wn[i],int((band_max_wn[i]-band_min_wn[i])/0.01) + 1))
+def mie_phase_function(band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_spectral_resolutions=s.band_spectral_resolutions,band_wn=s.band_wn,band_wl=s.band_wl,band_absco_res_wn=s.band_absco_res_wn,d_aerosol=s.d_aerosol,n_aerosol=s.n_aerosol,sza=s.sza,sza_0=s.sza_0):
 
   #Size parameter
   x_aerosol = []
@@ -232,9 +206,7 @@ def mie_phase_function(band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_
     x_aerosol.append(2.*np.pi*(d_aerosol/2.)/(band_wl[i]*1e-6))
 
   #Number of angles for S1 and S2 function in range from 0 to pi/2
-  #Decreasing to speed things up a bit
   phase_res = 10 
-  #phase_res = 1000 
 
   #Mie scattering, on the instrument wavelength grid
   P11 = []
@@ -263,7 +235,6 @@ def mie_phase_function(band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_
     ssa_aerosol_wn.append(ssa[i][::-1])
     qext_aerosol_wn.append(qext[i][::-1])
 
-
   #Linearlly interpolate from the instrument-res grid to the ABSCO-res grid, which is what the forward model needs
   P_aerosol_absco_res_wn = []
   ssa_aerosol_absco_res_wn = []
@@ -272,6 +243,5 @@ def mie_phase_function(band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_
     P_aerosol_absco_res_wn.append(np.interp(band_absco_res_wn[i], band_wn[i], P_aerosol_wn[i]))
     ssa_aerosol_absco_res_wn.append(np.interp(band_absco_res_wn[i], band_wn[i], ssa_aerosol_wn[i]))
     qext_aerosol_absco_res_wn.append(np.interp(band_absco_res_wn[i], band_wn[i], qext_aerosol_wn[i]))
-
 
   return P_aerosol_absco_res_wn, ssa_aerosol_absco_res_wn, qext_aerosol_absco_res_wn
