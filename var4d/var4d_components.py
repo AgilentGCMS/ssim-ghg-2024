@@ -287,6 +287,10 @@ class Observations(RunSpecs):
         self.site_code_to_dataset = {
             'lef': ['co2_lef_tower-insitu_1_allvalid-396magl'],
             'amt': ['co2_amt_tower-insitu_1_allvalid-107magl'],
+            'wkt': ['co2_wkt_tower-insitu_1_allvalid-457magl'],
+            'wbi': ['co2_wbi_tower-insitu_1_allvalid-379magl', 'co2_wbi_surface-pfp_1_allvalid-379magl'],
+            'sct': ['co2_sct_surface-pfp_1_allvalid-305magl', 'co2_sct_tower-insitu_1_allvalid-305magl'],
+            'wgc': ['co2_wgc_tower-insitu_1_allvalid-483magl'],
             }
         self.unassim_mdm = 1.0E36 # ppm
 
