@@ -719,6 +719,7 @@ class Var4D_Components(RunSpecs):
         max_iter = kwargs['max_iter'] if 'max_iter' in kwargs else 50
         optim_method = kwargs['optim_method'] if 'optim_method' in kwargs else 'BFGS'
         use_hessian = kwargs['hessian'] if 'hessian' in kwargs else False
+        sites_to_output = list(self.obs_cons.mbl_sites.keys()) + list(self.obs_cons.site_code_to_dataset.keys())
 
         # self.var4d_setup(obs_to_assim=obs_to_assim)
 
@@ -738,10 +739,7 @@ class Var4D_Components(RunSpecs):
 
         # first, store the observations simulated with prior fluxes as model diagnostic
         obs_apri = self.forward_transport(self.state_prior)
-        self.obs_cons.save_timeseries_by_site(
-            self.obs_vec, obs_apri, self.obs_err, self.output_dir,
-            ['mlo', 'spo', 'smo', 'brw', 'kum', 'lef', 'amt'],
-            'apri', False)
+        self.obs_cons.save_timeseries_by_site(self.obs_vec, obs_apri, self.obs_err, self.output_dir, sites_to_output, 'apri', False)
 
         # now optimize
         minimize_args = dict(
@@ -759,10 +757,8 @@ class Var4D_Components(RunSpecs):
         self.state_poste_preco = res.x
         self.state_poste = self.state_to_flux(res.x)
         obs_apos = self.forward_transport(self.state_poste)
-        self.obs_cons.save_timeseries_by_site(
-            self.obs_vec, obs_apos, self.obs_err, self.output_dir,
-            ['mlo', 'spo', 'smo', 'brw', 'kum', 'lef', 'amt'],
-            'apos', True)
+        self.obs_cons.save_timeseries_by_site(self.obs_vec, obs_apri, self.obs_err, self.output_dir, sites_to_output, 'apos', True)
+
         self.var4d_done()
 
         if not self.verbose:
