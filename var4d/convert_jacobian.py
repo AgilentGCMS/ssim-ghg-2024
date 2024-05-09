@@ -17,8 +17,10 @@ class Paths(object):
             os.path.join(os.environ['HOME'], 'inversion_output'), # GHG Center's JupyterHub
             os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/2024/output'), # Sourish's laptop
             ]
-        for folder_i, folder_o in zip(input_folder_order, output_folder_order):
+        font_order = ['Inconsolata', 'Calibri']
+        for folder_i, folder_o, ff in zip(input_folder_order, output_folder_order, font_order):
             if os.path.isdir(folder_i):
+                self.figure_font = ff
                 self.data_root = folder_i
                 self.output_root = folder_o
                 if not os.path.isdir(self.output_root):

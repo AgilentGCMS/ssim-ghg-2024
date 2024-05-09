@@ -522,6 +522,9 @@ class Var4D_Components(RunSpecs):
             assim_idx = obs_err < 0.5*self.obs_cons.unassim_mdm
             obs_err[assim_idx] = kwargs['uniform_mdm']
 
+        # print the number of obs assimilated
+        print('%i of %i obs will be assimilated'%( (obs_err < 0.5*self.obs_cons.unassim_mdm).sum(), len(obs_err) ))
+
         return obs_err
 
     def setup_obs(self, true_flux='CT2022', trans_model='GC', obs_to_assim={}):
@@ -762,7 +765,7 @@ class Var4D_Components(RunSpecs):
         self.state_poste_preco = res.x
         self.state_poste = self.state_to_flux(res.x)
         obs_apos = self.forward_transport(self.state_poste)
-        self.obs_cons.save_timeseries_by_site(self.obs_vec, obs_apri, self.obs_err, self.output_dir, sites_to_output, 'apos', True)
+        self.obs_cons.save_timeseries_by_site(self.obs_vec, obs_apos, self.obs_err, self.output_dir, sites_to_output, 'apos', True)
 
         self.var4d_done()
 
