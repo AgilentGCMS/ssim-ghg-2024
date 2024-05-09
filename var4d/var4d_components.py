@@ -719,7 +719,7 @@ class Var4D_Components(RunSpecs):
         max_iter = kwargs['max_iter'] if 'max_iter' in kwargs else 50
         optim_method = kwargs['optim_method'] if 'optim_method' in kwargs else 'BFGS'
         use_hessian = kwargs['hessian'] if 'hessian' in kwargs else False
-        sites_to_output = list(self.obs_cons.mbl_sites.keys()) + list(self.obs_cons.site_code_to_dataset.keys())
+        sites_to_output = self.obs_cons.mbl_sites + list(self.obs_cons.site_code_to_dataset.keys())
 
         # self.var4d_setup(obs_to_assim=obs_to_assim)
 
