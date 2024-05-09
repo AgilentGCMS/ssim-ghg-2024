@@ -352,6 +352,9 @@ class Observations(RunSpecs):
                 ds_ = [s for s in ds_ if 'flask' in s]
             obs_idx = self.get_indices_from_datasets(ds_)
 
+            if len(obs_idx) == 0:
+                continue
+
             site_times = obs_times[obs_idx]
             site_obs = obs_vector[obs_idx]
             site_model = model_vector[obs_idx]
