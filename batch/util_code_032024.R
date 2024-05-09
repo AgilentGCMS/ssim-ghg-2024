@@ -354,11 +354,11 @@ plot_timeseries_flux_bytranscom = function(data=ret)
 #-- FORM DATA FRAME OF PRIOR/POSTERIOR USING SAMPLES FROM NETCDF FILES, FOR PLOTTING
 #-- this needs transparent parapply wrapper on the monthly grid2transcom() to speed up (e.g. line 2 below)
 organize_data_for_plotting = function(prior_flux_netcdf="/Users/aschuh/test_output_prior/gridded_fluxes.nc4",
-                                      posterior_flux_netcdf="/Users/aschuh/test_output_posterior/gridded_fluxes.nc4")
+                                      posterior_flux_netcdf="/Users/aschuh/test_output_posterior/gridded_fluxes.nc4",max.cores=4)
 {
-  print(paste("you have",detectCores(),"cores to work with"))
-  cl <- makeCluster(detectCores() - 2, type = "FORK")
-  
+  cores_used = min(max.cores,detectCores() - 2)
+  cl <- makeCluster(cores_used, type = "FORK")
+   print(paste("you have",detectCores(),"cores to work with, working with ",cores_used))
   d = load.ncdf(posterior_flux_netcdf)
   post_tr_monthly <- parApply(cl,d$flux.samples,c(3,4),FUN=function(x){grid2transcom(x,file_location=data_dir)}) %>% aperm(c(2,3,1)) 
   #post_tr_monthly = aaply(d$flux.samples,c(3,4),.fun=function(x){grid2transcom(x)})
