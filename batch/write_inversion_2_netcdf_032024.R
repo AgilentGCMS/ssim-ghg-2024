@@ -18,7 +18,7 @@ if(dir.exists(output_dir)){
   warning(paste("overwriting inversion results in",output_dir))
 }else{
   print(paste("creating",output_dir))
-  dir.create(output_dir)
+  dir.create(output_dir,recursive=TRUE)
 }
 
 outfile_name_state_vector = file.path(output_dir,"state_vector.nc4")
