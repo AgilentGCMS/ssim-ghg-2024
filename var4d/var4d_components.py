@@ -465,7 +465,7 @@ class Var4D_Components(RunSpecs):
             mip_mdm = fid.variables['mip_mdm'][:]
 
         # by default assimilate nothing
-        obs_err[:] = self.obs_cons.unassim_mdm * np.ones(nobs, dtype=np.float64)
+        obs_err = self.obs_cons.unassim_mdm * np.ones(nobs, dtype=np.float64)
 
         if 'oco2' in kwargs and kwargs['oco2']:
             obs_err[oco2_idx] = mip_mdm[oco2_idx]
