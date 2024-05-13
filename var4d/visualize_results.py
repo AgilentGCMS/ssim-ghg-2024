@@ -171,4 +171,4 @@ class Visualize_Obs(Visualize):
             fig.text((lpad+0.5*width+iax*(width+wd_pad))/fig_width, 1.0-0.5*tpad/fig_height, site.upper(), ha='center', va='center', size=14)
 
         fig.text(0.05/fig_width, (bpad+diff_height+ht_pad+0.5*height)/fig_height, u'CO\u2082 (ppm)', ha='left', va='center', rotation=90, **self.label_font_property)
-        fig.text(0.05/fig_width, (bpad+0.5*diff_height)/fig_height, 'Difference (ppm)', ha='left', va='center', rotation=90, **self.label_font_property)
+        fig.text(0.05/fig_width, (bpad+0.5*diff_height)/fig_height, u'Model\u2009\u2212\u2009Obs (ppm)', ha='left', va='center', rotation=90, **self.label_font_property)
