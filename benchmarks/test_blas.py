@@ -36,7 +36,7 @@ for rep in tqdm.tqdm(range(num_repeats), desc='Benchmarking matrix operations'):
     svd_times[rep] = t2-t1
 
     t1 = time.perf_counter()
-    D = np.linalg.eigh(H)
+    D = np.linalg.cholesky(H)
     t2 = time.perf_counter()
     cholesky_times[rep] = t2-t1
 
