@@ -23,7 +23,10 @@ class Timer(object):
         dt = t2-self.t1
         num_indents = len(self.indent_levels)
         if self.print_msg:
-            print_line = "  "*num_indents + "%s %s"%(self.msg, self.format_dt(dt))
+            if 'prefix' in self.addendum:
+                print_line = "  "*num_indents + "%s %s %s"%(self.addendum['prefix'], self.msg, self.format_dt(dt))
+            else:
+                print_line = "  "*num_indents + "%s %s"%(self.msg, self.format_dt(dt))
             if 'postfix' in self.addendum:
                 print_line = '%s %s'%(print_line, self.addendum['postfix'])
             print(print_line)
@@ -527,6 +530,9 @@ class Var4D_Components(RunSpecs):
 
         return obs_err
 
+    def add_obs_bias(self, **kwargs):
+        pass
+
     def setup_obs(self, true_flux='CT2022', trans_model='GC', obs_to_assim={}):
         if true_flux.lower() == 'ct2022':
             state_vec = self.flux_cons.construct_state_vector_from_ct2022(smush_regions=False)
@@ -740,6 +746,9 @@ class Var4D_Components(RunSpecs):
             self.progress_bars['hessp'] = tqdm.tqdm(desc='Hessian product evaluation'.rjust(30), total=float('inf'), unit='')
 
         self.optim_diags = { # after optimization, show the progress of the cost function and gradient norm
+            'iter_grad': 0,
+            'iter_cost': 0,
+            'iter_hess': 0,
             'iter': 0,
             'cost_function': [],
             'gradient_norm': [],
@@ -843,14 +852,19 @@ class Var4D_Components(RunSpecs):
     def hessian_product(self, p, x):
         # returns the product of the Hessian and vector x, without explicitly evaluating the Hessian
         # ignore p, the value of the state vector
-        with Timer("Calculated product with Hessian in ", print=self.verbose):
+        with Timer("Calculated product with Hessian in ", print=self.verbose) as tm:
             Lx = np.matmul(self.L, x)
             HLx = self.forward_transport(Lx)
             RinvHLx = HLx/(self.obs_err**2)
             HTRinvHLx = self.adjoint_transport(RinvHLx)
             LTHTRinvHLx = np.matmul(self.L.T, HTRinvHLx)
+
+            self.optim_diags['iter_hess'] += 1
+            tm['prefix'] = '[%i]'%self.optim_diags['iter_hess']
+
         if 'hessp' in self.progress_bars:
             self.progress_bars['hessp'].update()
+
         return LTHTRinvHLx
 
     def calculate_cost(self, state_vector):
@@ -865,6 +879,8 @@ class Var4D_Components(RunSpecs):
             bg_cost = 0.5 * np.sum(state_vector**2)
             total_cost = obs_cost + bg_cost
             self.optim_diags['cost_function'].append(total_cost)
+            self.optim_diags['iter_cost'] += 1
+            tm['prefix'] = '[%i]'%self.optim_diags['iter_cost']
             tm['postfix'] = '(J = %.4g)'%total_cost
 
         if 'cost' in self.progress_bars:
@@ -889,8 +905,10 @@ class Var4D_Components(RunSpecs):
             del self.mdm
             total_gradient = gradient_preco + state_vector
             self.optim_diags['iter'] += 1
+            self.optim_diags['iter_grad'] += 1
             gradient_norm = np.sqrt(np.sum(total_gradient**2))
             self.optim_diags['gradient_norm'].append(gradient_norm)
+            tm['prefix'] = '[%i]'%self.optim_diags['iter_grad']
             tm['postfix'] = u'(\u23b8\u2202J/\u2202\u03be\u23b9 = %.4g)'%gradient_norm
 
         if 'grad' in self.progress_bars:
