@@ -33,5 +33,5 @@ for rep in tqdm.tqdm(range(num_repeats), desc='Benchmarking matrix operations'):
     svd_times[rep] = t2-t1
 
 print("Time for creating matrices = %s s"%str_with_err(create_times.mean(), create_times.std()))
-print("Time for matmul = %s s"%str_with_err(matmul_times.mean(), matmul_times.std()))
+print("Time for multiplying matrices = %s s"%str_with_err(matmul_times.mean(), matmul_times.std()))
 print("Time for SVD = %s s"%str_with_err(svd_times.mean(), svd_times.std()))
