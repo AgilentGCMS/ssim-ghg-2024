@@ -326,39 +326,28 @@ class ForwardFunction:
 
             #Dealing with the starting edge of the band
             if band[band_wn_index[i]] <= band[0]+sigma_band*ILS_width:
-                for j in range(0,int(band_wn_index[i]+round_term)):
-                    Sc_I_band[i,j] = I_band[j] * ILS_Gaussian_term[i,j]
 
-                    if jacobians:
-                        Sc_I_band_albedo[i,j] = I_band_albedo[j] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_aerosol[i,j] = I_band_aerosol[j] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_q[i,j,:] = I_band_q[j,:] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_co2[i,j,:] = I_band_co2[j,:] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_ch4[i,j,:] = I_band_ch4[j,:] * ILS_Gaussian_term[i,j]
+                j_index_temp_lower = 0
+                j_index_temp_upper = int(band_wn_index[i]+round_term)
 
-            #Deadling with the trailing edge of the band
+            #Dealing with the trailing edge of the band
             elif band[band_wn_index[i]] >= band[len(band)-1]-sigma_band*ILS_width:
-                for j in range(int(band_wn_index[i]-round_term),len(band)):
-                    Sc_I_band[i,j] = I_band[j] * ILS_Gaussian_term[i,j]
 
-                    if jacobians:
-                        Sc_I_band_albedo[i,j] = I_band_albedo[j] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_aerosol[i,j] = I_band_aerosol[j] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_q[i,j,:] = I_band_q[j,:] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_co2[i,j,:] = I_band_co2[j,:] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_ch4[i,j,:] = I_band_ch4[j,:] * ILS_Gaussian_term[i,j]
+                j_index_temp_lower = int(band_wn_index[i]-round_term)
+                j_index_temp_upper = len(band)
 
             #Most of the band
             else:
-                for j in range(int(band_wn_index[i]-round_term),int(band_wn_index[i]+round_term)):
-                    Sc_I_band[i,j] = I_band[j] * ILS_Gaussian_term[i,j]
+                j_index_temp_lower = int(band_wn_index[i]-round_term)
+                j_index_temp_upper = int(band_wn_index[i]+round_term)
 
-                    if jacobians:
-                        Sc_I_band_albedo[i,j] = I_band_albedo[j] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_aerosol[i,j] = I_band_aerosol[j] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_q[i,j,:] = I_band_q[j,:] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_co2[i,j,:] = I_band_co2[j,:] * ILS_Gaussian_term[i,j]
-                        Sc_I_band_ch4[i,j,:] = I_band_ch4[j,:] * ILS_Gaussian_term[i,j]
+            Sc_I_band[i,j_index_temp_lower:j_index_temp_upper] = I_band[j_index_temp_lower:j_index_temp_upper] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper]
+            if jacobians:
+                Sc_I_band_albedo[i,j_index_temp_lower:j_index_temp_upper] = I_band_albedo[j_index_temp_lower:j_index_temp_upper] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper]
+                Sc_I_band_aerosol[i,j_index_temp_lower:j_index_temp_upper] = I_band_aerosol[j_index_temp_lower:j_index_temp_upper] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper]
+                Sc_I_band_q[i,j_index_temp_lower:j_index_temp_upper,:] = I_band_q[j_index_temp_lower:j_index_temp_upper,:] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper,None]
+                Sc_I_band_co2[i,j_index_temp_lower:j_index_temp_upper,:] = I_band_co2[j_index_temp_lower:j_index_temp_upper,:] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper,None]
+                Sc_I_band_ch4[i,j_index_temp_lower:j_index_temp_upper,:] = I_band_ch4[j_index_temp_lower:j_index_temp_upper,:] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper,None]
 
 
         return Sc_I_band, Sc_I_band_albedo, Sc_I_band_aerosol, Sc_I_band_q, Sc_I_band_co2, Sc_I_band_ch4
