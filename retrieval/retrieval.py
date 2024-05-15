@@ -30,7 +30,7 @@ ILS_width = 5.0
 
 
 class ForwardFunction:
-    def __init__(self,SNR=s.SNR,sza_0=s.sza_0,sza=s.sza,co2=s.co2_true,ch4=s.ch4_true,T=s.T_true,p=s.p_true,q=s.q_true,albedo=s.albedo_true,band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_spectral_resolutions=s.band_spectral_resolutions,band_min_um=s.band_min_um,band_max_um=s.band_max_um,band_spectral_points=s.band_spectral_points,band_wn=s.band_wn,band_wl=s.band_wl,band_absco_res_wn=s.band_absco_res_wn,resolving_power_band=s.resolving_power_band,sigma_band=s.sigma_band,band_wn_index=s.band_wn_index,ILS_Gaussian_term=s.ILS_Gaussian_term,absco_data=None,band_molecules=s.band_molecules,P_aerosol=None,ssa_aerosol=None,qext_aerosol=None,height_aerosol=s.height_aerosol,tau_aerosol=s.tau_aerosol_true,measurement_error=False,jacobians=False):
+    def __init__(self,SNR=s.SNR,sza_0=s.sza_0,sza=s.sza,co2=s.co2_true,ch4=s.ch4_true,T=s.T_true,p=s.p_true,q=s.q_true,albedo=s.albedo_true,band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_spectral_resolutions=s.band_spectral_resolutions,band_min_um=s.band_min_um,band_max_um=s.band_max_um,band_spectral_points=s.band_spectral_points,band_wn=s.band_wn,band_wl=s.band_wl,band_absco_res_wn=s.band_absco_res_wn,resolving_power_band=s.resolving_power_band,sigma_band=s.sigma_band,band_wn_index=s.band_wn_index,ILS_Gaussian_term=s.ILS_Gaussian_term,ILS_Gaussian_term_sum=s.ILS_Gaussian_term_sum,absco_data=None,band_molecules=s.band_molecules,P_aerosol=None,ssa_aerosol=None,qext_aerosol=None,height_aerosol=s.height_aerosol,tau_aerosol=s.tau_aerosol_true,measurement_error=False,jacobians=False):
 
 
         '''
@@ -67,6 +67,7 @@ class ForwardFunction:
         self.sigma_band = sigma_band
         self.band_wn_index = band_wn_index
         self.ILS_Gaussian_term = ILS_Gaussian_term
+        self.ILS_Gaussian_term_sum = ILS_Gaussian_term_sum
 
 
         #Approximately calculate the solar irradiance at our bands using Planck's law (assuming the Sun is 5800 K), then account for the solid angle of the Sun and convert into per um instead of per m.
@@ -228,58 +229,63 @@ class ForwardFunction:
             #Calculate the spectral response function (with and without multiplying by intensity)
             Sc_I_band, Sc_I_band_albedo, Sc_I_band_aerosol, Sc_I_band_q, Sc_I_band_co2, Sc_I_band_ch4 = self.spectral_response_function(self.band_wn_index[i],self.band_absco_res_wn[i],self.sigma_band[i],self.ILS_Gaussian_term[i],I,I_albedo,I_aerosol,I_q,I_co2,I_ch4,self.jacobians)
 
-            Sc_band_sum = np.sum(self.ILS_Gaussian_term[i],axis=1)
-
             #Calculate radiance (Rc) by integrating intensity times ILS, and reverse to plot in micrometers
-            Rc_band = (np.sum(Sc_I_band,axis=1)/Sc_band_sum)[::-1]
+            Rc_band = (np.sum(Sc_I_band,axis=1)/self.ILS_Gaussian_term_sum[i])[::-1]
 
             #For analytic Jacobians
-            Rc_band_albedo = (np.sum(Sc_I_band_albedo,axis=1)/Sc_band_sum)[::-1]
-            Rc_band_aerosol = (np.sum(Sc_I_band_aerosol,axis=1)/Sc_band_sum)[::-1]
-            Rc_band_q = (np.sum(Sc_I_band_q,axis=1)/Sc_band_sum[:,None])[::-1,:]
-            Rc_band_co2 = (np.sum(Sc_I_band_co2,axis=1)/Sc_band_sum[:,None])[::-1,:]
-            Rc_band_ch4 = (np.sum(Sc_I_band_ch4,axis=1)/Sc_band_sum[:,None])[::-1,:]
+            if jacobians:
+              #print(Sc_I_band_albedo.shape)
+              Rc_band_albedo = (np.sum(Sc_I_band_albedo,axis=1)/self.ILS_Gaussian_term_sum[i])[::-1]
+              Rc_band_aerosol = (np.sum(Sc_I_band_aerosol,axis=1)/self.ILS_Gaussian_term_sum[i])[::-1]
+              Rc_band_q = (np.sum(Sc_I_band_q,axis=1)/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
+              Rc_band_co2 = (np.sum(Sc_I_band_co2,axis=1)/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
+              Rc_band_ch4 = (np.sum(Sc_I_band_ch4,axis=1)/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
+
+            #print("Sum ILS time = ",time.time()-time1)
 
             #Append for the band we're on
             self.R_band.append(Rc_band)
-
-            #For analytic Jacobians
-            self.R_band_albedo.append(Rc_band_albedo)
-            self.R_band_aerosol.append(Rc_band_aerosol)
-            self.R_band_q.append(Rc_band_q)
-            self.R_band_co2.append(Rc_band_co2)
-            self.R_band_ch4.append(Rc_band_ch4)
+            if jacobians:
+              #For analytic Jacobians
+              self.R_band_albedo.append(Rc_band_albedo)
+              self.R_band_aerosol.append(Rc_band_aerosol)
+              self.R_band_q.append(Rc_band_q)
+              self.R_band_co2.append(Rc_band_co2)
+              self.R_band_ch4.append(Rc_band_ch4)
 
         self.y = np.concatenate(self.R_band)
-        self.y_albedo = np.concatenate(self.R_band_albedo)
-        self.y_aerosol = np.concatenate(self.R_band_aerosol)
-        self.y_q = np.concatenate(self.R_band_q)
-        self.y_co2 = np.concatenate(self.R_band_co2)
-        self.y_ch4 = np.concatenate(self.R_band_ch4)
+        if jacobians:
+          self.y_albedo = np.concatenate(self.R_band_albedo)
+          self.y_aerosol = np.concatenate(self.R_band_aerosol)
+          self.y_q = np.concatenate(self.R_band_q)
+          self.y_co2 = np.concatenate(self.R_band_co2)
+          self.y_ch4 = np.concatenate(self.R_band_ch4)
 
-        noise = []
-        for i in range(len(self.band_max_wn)):
-          signal = self.R_band[i].max()
-          sigma = signal/self.SNR
-          noise_temp = np.random.normal(0,sigma,self.band_spectral_points[i])
-          noise.append(noise_temp)
-          if self.measurement_error: self.R_band[i] = self.R_band[i] + noise_temp
-
+        #For the true scene, add noise:
         if self.measurement_error:
-          #Now that we've added per-band noise, combine into one spectra
-          self.y = np.concatenate(self.R_band)
+          noise = []
+          for i in range(len(self.band_max_wn)):
+            signal = self.R_band[i].max()
+            sigma = signal/self.SNR
+            noise_temp = np.random.normal(0,sigma,self.band_spectral_points[i])
+            noise.append(noise_temp)
+            self.R_band[i] = self.R_band[i] + noise_temp
 
-        #Need to calculate Sy_inv, even if we aren't adding noise to y, because the cost function needs it.
-        noise_std = []
-        for i in range(len(self.band_max_wn)):
-          noise_std.append(np.full((len(noise[i])),np.std(noise[i])**2.0))
-        Sy = np.diag(np.concatenate(noise_std))
+        #Now combine into one spectra
+        self.y = np.concatenate(self.R_band)
 
-        #Calculate this ahead of time so we don't have to calculate it every retrieval iteration
-        Sy_inv = np.zeros(Sy.shape)
-        np.fill_diagonal(Sy_inv,1./Sy.diagonal())
+        #For the true scene with noise, calculate Sy
+        if self.measurement_error:
+          noise_std = []
+          for i in range(len(self.band_max_wn)):
+            noise_std.append(np.full((len(noise[i])),np.std(noise[i])**2.0))
+          Sy = np.diag(np.concatenate(noise_std))
 
-        self.Sy_inv = Sy_inv
+          #Calculate this ahead of time so we don't have to calculate it every retrieval iteration
+          Sy_inv = np.zeros(Sy.shape)
+          np.fill_diagonal(Sy_inv,1./Sy.diagonal())
+
+          self.Sy_inv = Sy_inv
 
 
     #Calculate intensities for a single band
@@ -370,6 +376,8 @@ class Retrieval:
 
     def run(self, x, model_prior, model_true, absco_data, chisq_threshold=s.chisq_threshold):
 
+        time_total=time.time()
+
         #Set the initial guess to the prior
         x["ret"] = deepcopy(x["prior"])
 
@@ -377,8 +385,10 @@ class Retrieval:
         done=False
         while not done:
 
+            time1=time.time()
+
             if self.iterations == 0:
-                print("-----------")
+                print("-----------------------------------------------------------------------------------------------------------------------")
                 print("State vector:")
                 print("Name                                              Prior  True")
                 for i in range(len(x["prior"])):
@@ -415,7 +425,6 @@ class Retrieval:
 
                 #Need to use finite differencing for T and p Jacobians
                 if ("Temperature" in x["names"][i]) or ("Pressure" in x["names"][i]):
-                    print("Calculating the finite differencing Jacobian for",x["names"][i])
                     x_perturbed = deepcopy(x)
                     x_perturbed["ret"][i] += s.perturbation
                     model_perturbed = self.forward_model(x_perturbed, model_prior, absco_data, jacobians=False)
@@ -431,7 +440,7 @@ class Retrieval:
             x["dx"] = self.S.dot((((self.K.T).dot(model_true.Sy_inv).dot(model_true.y - model_ret.y)) - (LA.inv(x["S_prior"]).dot(x["ret"]-x["prior"]))))
 
             print("Updated state vector (iteration "+str(self.iterations+1)+"):")
-            print("Name                                             Prior  True                  Current               Dx from previous iteration:")
+            print("Name                                             Prior  True                  Current               Dx from prev. iteration:")
             for i in range(len(x["ret"])):
                 print(x["names"][i].ljust(49)+str(x["prior"][i]).ljust(5)+"  "+str(x["true"][i]).ljust(20)+"  "+str(x["ret"][i] + x["dx"][i]).ljust(20)+"  "+str(x["dx"][i]))
 
@@ -441,37 +450,39 @@ class Retrieval:
             #Print things. Index of CO2/CH4 depend on the forward model used.
             if "CO2 Profile Multiplicative Offset" in x["names"] and "CH4 Profile Multiplicative Offset" in x["names"]:
                 print("-----------")
-                print("Prior XCO2 =",'{:.5f}'.format(model_prior.xco2),"ppm")
-                print("True XCO2 =",'{:.5f}'.format(model_true.xco2),"ppm")
-                print("Current retrieved XCO2 =",'{:.5f}'.format(calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e6),"ppm")
-                print("XCO2 error (retrieved - true) =",'{:.5f}'.format(calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e6 - model_true.xco2),"ppm")
+                print("Prior XCO2 =".ljust(31),'{:.5f}'.format(model_prior.xco2).rjust(10),"ppm")
+                print("True XCO2 =".ljust(31),'{:.5f}'.format(model_true.xco2).rjust(10),"ppm")
+                print("Current retrieved XCO2 =".ljust(31),'{:.5f}'.format(calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e6).rjust(10),"ppm")
+                print("XCO2 error (retrieved - true) =".ljust(31),'{:.5f}'.format(calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e6 - model_true.xco2).rjust(10),"ppm")
 
                 print("-----------")
-                print("Prior XCH4 =",'{:.5f}'.format(model_prior.xch4),"ppb")
-                print("True XCH4 =",'{:.5f}'.format(model_true.xch4),"ppb")
-                print("Current retrieved XCH4 =",'{:.5f}'.format(calculate_Xgas(model_prior.ch4*x["ret"][1], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e9),"ppb")
-                print("XCH4 error (retrieved - true) =",'{:.5f}'.format(calculate_Xgas(model_prior.ch4*x["ret"][1], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e9 - model_true.xch4),"ppb")
-                print("------------------------------------------------------")
+                print("Prior XCH4 =".ljust(31),'{:.5f}'.format(model_prior.xch4).rjust(10),"ppb")
+                print("True XCH4 =".ljust(31),'{:.5f}'.format(model_true.xch4).rjust(10),"ppb")
+                print("Current retrieved XCH4 =".ljust(31),'{:.5f}'.format(calculate_Xgas(model_prior.ch4*x["ret"][1], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e9).rjust(10),"ppb")
+                print("XCH4 error (retrieved - true) =".ljust(31),'{:.5f}'.format(calculate_Xgas(model_prior.ch4*x["ret"][1], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e9 - model_true.xch4).rjust(10),"ppb")
+                print("-----------")
 
             elif "CO2 Profile Multiplicative Offset" in x["names"] and "CH4 Profile Multiplicative Offset" not in x["names"]:
                 print("-----------")
-                print("Prior XCO2 =",'{:.5f}'.format(model_prior.xco2),"ppm")
-                print("True XCO2 =",'{:.5f}'.format(model_true.xco2),"ppm")
-                print("Current retrieved XCO2 =",'{:.5f}'.format(calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e6),"ppm")
-                print("XCO2 error (retrieved - true) =",'{:.5f}'.format(calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e6 - model_true.xco2),"ppm")
-                print("------------------------------------------------------")
+                print("Prior XCO2 =".ljust(31),'{:.5f}'.format(model_prior.xco2).rjust(10),"ppm")
+                print("True XCO2 =".ljust(31),'{:.5f}'.format(model_true.xco2).rjust(10),"ppm")
+                print("Current retrieved XCO2 =".ljust(31),'{:.5f}'.format(calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e6).rjust(10),"ppm")
+                print("XCO2 error (retrieved - true) =".ljust(31),'{:.5f}'.format(calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e6 - model_true.xco2).rjust(10),"ppm")
+                print("-----------")
 
             elif "CO2 Profile Multiplicative Offset" not in x["names"] and "CH4 Profile Multiplicative Offset" in x["names"]:
                 print("-----------")
-                print("Prior XCH4 =",'{:.5f}'.format(model_prior.xch4),"ppb")
-                print("True XCH4 =",'{:.5f}'.format(model_true.xch4),"ppb")
-                print("Current retrieved XCH4 =",'{:.5f}'.format(calculate_Xgas(model_prior.ch4*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e9),"ppb")
-                print("XCH4 error (retrieved - true) =",'{:.5f}'.format(calculate_Xgas(model_prior.ch4*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e9 - model_true.xch4),"ppb")
-                print("------------------------------------------------------")
+                print("Prior XCH4 =".ljust(31),'{:.5f}'.format(model_prior.xch4).rjust(10),"ppb")
+                print("True XCH4 =".ljust(31),'{:.5f}'.format(model_true.xch4).rjust(10),"ppb")
+                print("Current retrieved XCH4 =".ljust(31),'{:.5f}'.format(calculate_Xgas(model_prior.ch4*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e9).rjust(10),"ppb")
+                print("XCH4 error (retrieved - true) =".ljust(31),'{:.5f}'.format(calculate_Xgas(model_prior.ch4*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e9 - model_true.xch4).rjust(10),"ppb")
+                print("-----------")
 
             else:
                 print("Unexpected state vector setup!")
 
+            print("Time for iteration",self.iterations+1,"=",'{:.2f}'.format(time.time()-time1), "s")
+            print("-----------------------------------------------------------------------------------------------------------------------")
 
             #Add iteration
             self.iterations += 1
@@ -480,6 +491,8 @@ class Retrieval:
                 print("More than 5 iterations, so we're stopping...")
                 done=True
                 continue
+
+        print("Total retrieval time =",'{:.2f}'.format(time.time()-time_total),"s")
 
 
 
@@ -507,7 +520,7 @@ class Retrieval:
             else: tau_aerosol = None
 
             #Call the foward function with info from the prior and the updated state vector elements
-            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,band_min_um=model_prior.band_min_um,band_max_um=model_prior.band_max_um,band_spectral_points=model_prior.band_spectral_points,band_wn=model_prior.band_wn,band_wl=model_prior.band_wl,band_absco_res_wn=model_prior.band_absco_res_wn,resolving_power_band=model_prior.resolving_power_band,sigma_band=model_prior.sigma_band,band_wn_index=model_prior.band_wn_index,ILS_Gaussian_term=model_prior.ILS_Gaussian_term,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
+            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,band_min_um=model_prior.band_min_um,band_max_um=model_prior.band_max_um,band_spectral_points=model_prior.band_spectral_points,band_wn=model_prior.band_wn,band_wl=model_prior.band_wl,band_absco_res_wn=model_prior.band_absco_res_wn,resolving_power_band=model_prior.resolving_power_band,sigma_band=model_prior.sigma_band,band_wn_index=model_prior.band_wn_index,ILS_Gaussian_term=model_prior.ILS_Gaussian_term,ILS_Gaussian_term_sum=model_prior.ILS_Gaussian_term_sum,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
 
             #Calculate analytical derivative
             model.y_k = np.zeros((len(model.y),len(x["ret"])))
@@ -534,7 +547,7 @@ class Retrieval:
             tau_aerosol = None
 
             #Call the foward function with info from the prior and the updated state vector elements
-            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=np.zeros(len(model_prior.ch4)),T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,band_min_um=model_prior.band_min_um,band_max_um=model_prior.band_max_um,band_spectral_points=model_prior.band_spectral_points,band_wn=model_prior.band_wn,band_wl=model_prior.band_wl,band_absco_res_wn=model_prior.band_absco_res_wn,resolving_power_band=model_prior.resolving_power_band,sigma_band=model_prior.sigma_band,band_wn_index=model_prior.band_wn_index,ILS_Gaussian_term=model_prior.ILS_Gaussian_term,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
+            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=co2,ch4=np.zeros(len(model_prior.ch4)),T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,band_min_um=model_prior.band_min_um,band_max_um=model_prior.band_max_um,band_spectral_points=model_prior.band_spectral_points,band_wn=model_prior.band_wn,band_wl=model_prior.band_wl,band_absco_res_wn=model_prior.band_absco_res_wn,resolving_power_band=model_prior.resolving_power_band,sigma_band=model_prior.sigma_band,band_wn_index=model_prior.band_wn_index,ILS_Gaussian_term=model_prior.ILS_Gaussian_term,ILS_Gaussian_term_sum=model_prior.ILS_Gaussian_term_sum,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
 
             #Calculate analytical derivative
             model.y_k = np.zeros((len(model.y),len(x["ret"])))
@@ -557,7 +570,7 @@ class Retrieval:
             tau_aerosol = None
 
             #Call the foward function with info from the prior and the updated state vector elements
-            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=np.zeros(len(model_prior.co2)),ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,band_min_um=model_prior.band_min_um,band_max_um=model_prior.band_max_um,band_spectral_points=model_prior.band_spectral_points,band_wn=model_prior.band_wn,band_wl=model_prior.band_wl,band_absco_res_wn=model_prior.band_absco_res_wn,resolving_power_band=model_prior.resolving_power_band,sigma_band=model_prior.sigma_band,band_wn_index=model_prior.band_wn_index,ILS_Gaussian_term=model_prior.ILS_Gaussian_term,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
+            model = ForwardFunction(SNR=model_prior.SNR,sza_0=model_prior.sza_0,sza=model_prior.sza,co2=np.zeros(len(model_prior.co2)),ch4=ch4,T=T,p=p,q=q,albedo=albedo,band_min_wn=model_prior.band_min_wn,band_max_wn=model_prior.band_max_wn,band_spectral_resolutions=model_prior.band_spectral_resolutions,band_min_um=model_prior.band_min_um,band_max_um=model_prior.band_max_um,band_spectral_points=model_prior.band_spectral_points,band_wn=model_prior.band_wn,band_wl=model_prior.band_wl,band_absco_res_wn=model_prior.band_absco_res_wn,resolving_power_band=model_prior.resolving_power_band,sigma_band=model_prior.sigma_band,band_wn_index=model_prior.band_wn_index,ILS_Gaussian_term=model_prior.ILS_Gaussian_term,ILS_Gaussian_term_sum=model_prior.ILS_Gaussian_term_sum,absco_data=absco_data,band_molecules=model_prior.band_molecules,P_aerosol=model_prior.P_aerosol,ssa_aerosol=model_prior.ssa_aerosol,qext_aerosol=model_prior.qext_aerosol,height_aerosol=model_prior.height_aerosol,tau_aerosol=tau_aerosol,jacobians=jacobians)
 
             #Calculate analytical derivative
             model.y_k = np.zeros((len(model.y),len(x["ret"])))
