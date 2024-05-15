@@ -127,4 +127,10 @@ ILS_Gaussian_term = []
 for i in range(len(band_min_wn)):
   ILS_Gaussian_term.append(1.0/sigma_band[i]/((2.0*np.pi)**0.5) * np.exp(-(band_absco_res_wn[i][None,:]-band_absco_res_wn[i][band_wn_index[i][:,None]])**2.0 / 2.0 / sigma_band[i]**2.0))
 
+#Calculate a big term used in the ILS function to save time
+ILS_Gaussian_term = []
+ILS_Gaussian_term_sum = []
+for i in range(len(band_min_wn)):
+  ILS_Gaussian_term.append(1.0/sigma_band[i]/((2.0*np.pi)**0.5) * np.exp(-(band_absco_res_wn[i][None,:]-band_absco_res_wn[i][band_wn_index[i][:,None]])**2.0 / 2.0 / sigma_band[i]**2.0))
+  ILS_Gaussian_term_sum.append(np.sum(ILS_Gaussian_term[i],axis=1))
 
