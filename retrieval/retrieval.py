@@ -231,23 +231,18 @@ class ForwardFunction:
             Sc_I_band, Sc_I_band_albedo, Sc_I_band_aerosol, Sc_I_band_q, Sc_I_band_co2, Sc_I_band_ch4 = self.spectral_response_function(self.band_wn_index[i],self.band_absco_res_wn[i],self.sigma_band[i],self.ILS_Gaussian_term[i],I,I_albedo,I_aerosol,I_q,I_co2,I_ch4,self.jacobians)
 
             #Calculate radiance (Rc) by integrating intensity times ILS, and reverse to plot in micrometers
-            Rc_band = (np.sum(Sc_I_band,axis=1)/self.ILS_Gaussian_term_sum[i])[::-1]
+            Rc_band = (Sc_I_band/self.ILS_Gaussian_term_sum[i])[::-1]
 
-            #For analytic Jacobians
             if jacobians:
-              #print(Sc_I_band_albedo.shape)
-              Rc_band_albedo = (np.sum(Sc_I_band_albedo,axis=1)/self.ILS_Gaussian_term_sum[i])[::-1]
-              Rc_band_aerosol = (np.sum(Sc_I_band_aerosol,axis=1)/self.ILS_Gaussian_term_sum[i])[::-1]
-              Rc_band_q = (np.sum(Sc_I_band_q,axis=1)/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
-              Rc_band_co2 = (np.sum(Sc_I_band_co2,axis=1)/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
-              Rc_band_ch4 = (np.sum(Sc_I_band_ch4,axis=1)/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
-
-            #print("Sum ILS time = ",time.time()-time1)
+              Rc_band_albedo = (Sc_I_band_albedo/self.ILS_Gaussian_term_sum[i])[::-1]
+              Rc_band_aerosol = (Sc_I_band_aerosol/self.ILS_Gaussian_term_sum[i])[::-1]
+              Rc_band_q = (Sc_I_band_q/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
+              Rc_band_co2 = (Sc_I_band_co2/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
+              Rc_band_ch4 = (Sc_I_band_ch4/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
 
             #Append for the band we're on
             self.R_band.append(Rc_band)
             if jacobians:
-              #For analytic Jacobians
               self.R_band_albedo.append(Rc_band_albedo)
               self.R_band_aerosol.append(Rc_band_aerosol)
               self.R_band_q.append(Rc_band_q)
@@ -320,12 +315,13 @@ class ForwardFunction:
     #Assume a Gaussian ILS
     def spectral_response_function(self,band_wn_index,band,sigma_band,ILS_Gaussian_term,I_band,I_band_albedo,I_band_aerosol,I_band_q,I_band_co2,I_band_ch4,jacobians):
 
-        Sc_I_band = np.zeros((len(band_wn_index),len(band))) #wn instrument x wn absco 
-        Sc_I_band_albedo = np.zeros((len(band_wn_index),len(band))) #wn instrument x wn absco
-        Sc_I_band_aerosol = np.zeros((len(band_wn_index),len(band))) #wn instrument x wn absco
-        Sc_I_band_q = np.zeros((len(band_wn_index),len(band),I_band_q.shape[1])) #wn instrument x wn absco x layers
-        Sc_I_band_co2 = np.zeros((len(band_wn_index),len(band),I_band_co2.shape[1])) #wn instrument x wn absco x layers
-        Sc_I_band_ch4 = np.zeros((len(band_wn_index),len(band),I_band_ch4.shape[1])) #wn instrument x wn absco x layers
+        Sc_I_band = np.zeros((len(band_wn_index))) #wn instrument
+
+        Sc_I_band_albedo = np.zeros((len(band_wn_index))) #wn instrument
+        Sc_I_band_aerosol = np.zeros((len(band_wn_index))) #wn instrument
+        Sc_I_band_q = np.zeros((len(band_wn_index),I_band_q.shape[1])) #wn instrument x layers
+        Sc_I_band_co2 = np.zeros((len(band_wn_index),I_band_co2.shape[1])) #wn instrument x layers
+        Sc_I_band_ch4 = np.zeros((len(band_wn_index),I_band_ch4.shape[1])) #wn instrument x layers
 
         round_term = round(sigma_band*ILS_width*100.0)
 
@@ -348,14 +344,14 @@ class ForwardFunction:
                 j_index_temp_lower = int(band_wn_index[i]-round_term)
                 j_index_temp_upper = int(band_wn_index[i]+round_term)
 
-            Sc_I_band[i,j_index_temp_lower:j_index_temp_upper] = I_band[j_index_temp_lower:j_index_temp_upper] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper]
-            if jacobians:
-                Sc_I_band_albedo[i,j_index_temp_lower:j_index_temp_upper] = I_band_albedo[j_index_temp_lower:j_index_temp_upper] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper]
-                Sc_I_band_aerosol[i,j_index_temp_lower:j_index_temp_upper] = I_band_aerosol[j_index_temp_lower:j_index_temp_upper] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper]
-                Sc_I_band_q[i,j_index_temp_lower:j_index_temp_upper,:] = I_band_q[j_index_temp_lower:j_index_temp_upper,:] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper,None]
-                Sc_I_band_co2[i,j_index_temp_lower:j_index_temp_upper,:] = I_band_co2[j_index_temp_lower:j_index_temp_upper,:] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper,None]
-                Sc_I_band_ch4[i,j_index_temp_lower:j_index_temp_upper,:] = I_band_ch4[j_index_temp_lower:j_index_temp_upper,:] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper,None]
+            Sc_I_band[i] = np.sum(I_band[j_index_temp_lower:j_index_temp_upper] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper])
 
+            if jacobians:
+                Sc_I_band_albedo[i] = np.sum(I_band_albedo[j_index_temp_lower:j_index_temp_upper] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper])
+                Sc_I_band_aerosol[i] = np.sum(I_band_aerosol[j_index_temp_lower:j_index_temp_upper] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper])
+                Sc_I_band_q[i,:] = np.sum(I_band_q[j_index_temp_lower:j_index_temp_upper,:] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper,None],axis=0)
+                Sc_I_band_co2[i,:] = np.sum(I_band_co2[j_index_temp_lower:j_index_temp_upper,:] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper,None],axis=0)
+                Sc_I_band_ch4[i,:] = np.sum(I_band_ch4[j_index_temp_lower:j_index_temp_upper,:] * ILS_Gaussian_term[i,j_index_temp_lower:j_index_temp_upper,None],axis=0)
 
         return Sc_I_band, Sc_I_band_albedo, Sc_I_band_aerosol, Sc_I_band_q, Sc_I_band_co2, Sc_I_band_ch4
 
