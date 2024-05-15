@@ -9,6 +9,7 @@ if module_path not in sys.path:
 import settings as s
 from absco_lookup import sigma_lookup
 from copy import deepcopy
+import time
 
 #Constants
 g=9.81 #m/s^2
