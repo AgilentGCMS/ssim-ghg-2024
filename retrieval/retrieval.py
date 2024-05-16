@@ -257,31 +257,30 @@ class ForwardFunction:
           self.y_co2 = np.concatenate(self.R_band_co2)
           self.y_ch4 = np.concatenate(self.R_band_ch4)
 
-        #For the true scene, add noise:
-        if self.measurement_error:
-          noise = []
-          for i in range(len(self.band_max_wn)):
-            signal = self.R_band[i].max()
-            sigma = signal/self.SNR
-            noise_temp = np.random.normal(0,sigma,self.band_spectral_points[i])
-            noise.append(noise_temp)
-            self.R_band[i] = self.R_band[i] + noise_temp
+        noise = []
+        for i in range(len(self.band_max_wn)):
+          signal = self.R_band[i].max()
+          sigma = signal/self.SNR
+          noise_temp = np.random.normal(0,sigma,self.band_spectral_points[i])
+          noise.append(noise_temp)
+          
+          #If we're adding noise:
+          if self.measurement_error: self.R_band[i] = self.R_band[i] + noise_temp
 
         #Now combine into one spectra
         self.y = np.concatenate(self.R_band)
 
-        #For the true scene with noise, calculate Sy
-        if self.measurement_error:
-          noise_std = []
-          for i in range(len(self.band_max_wn)):
-            noise_std.append(np.full((len(noise[i])),np.std(noise[i])**2.0))
-          Sy = np.diag(np.concatenate(noise_std))
+        #Calculate Sy even if we didn't add noise because we need something for Sy
+        noise_std = []
+        for i in range(len(self.band_max_wn)):
+          noise_std.append(np.full((len(noise[i])),np.std(noise[i])**2.0))
+        Sy = np.diag(np.concatenate(noise_std))
 
-          #Calculate this ahead of time so we don't have to calculate it every retrieval iteration
-          Sy_inv = np.zeros(Sy.shape)
-          np.fill_diagonal(Sy_inv,1./Sy.diagonal())
+        #Calculate this ahead of time so we don't have to calculate it every retrieval iteration
+        Sy_inv = np.zeros(Sy.shape)
+        np.fill_diagonal(Sy_inv,1./Sy.diagonal())
 
-          self.Sy_inv = Sy_inv
+        self.Sy_inv = Sy_inv
 
 
     #Calculate intensities for a single band
