@@ -21,9 +21,9 @@ for rep in tqdm.tqdm(range(num_repeats), desc='Benchmarking matrix operations'):
     A = np.random.random((n,p))
     B = np.random.random((p,q))
     H = np.random.random((n, n+1))
+
     t2 = time.perf_counter()
     create_times[rep] = t2-t1
-
     t1 = time.perf_counter()
     C = np.matmul(A,B)
     H = np.matmul(H, H.T)
