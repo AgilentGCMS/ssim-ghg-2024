@@ -53,25 +53,3 @@ for(i in 1:length(site_strings))
   
   
   
-  
-  
-  
-  
-cosamples_prior = load.ncdf("~/temp/output/test_output_prior/cosamples.nc4")
-cosamples_post = load.ncdf("~/temp/output/test_output_posterior/cosamples.nc4")
-
-dat = cbind(cosamples_prior$observation.id,cosamples_prior$mole.fraction.mean,
-            cosamples_post$mole.fraction.mean,cosamples_post[["assim flag"]])
-
-dat = 
-
-df <- economics %>% dplyr::select(date, psavert, uempmed) %>%
-  gather(key = "variable", value = "value", -date)
-head(df, 3)
-# Multiple line plot
-g = ggplot(df, aes(x = date, y = value)) + 
-  geom_line(aes(color = variable), size = 1) +
-  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
-  theme_minimal()
-
-ggplotly(g)
