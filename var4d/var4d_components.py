@@ -23,7 +23,10 @@ class Timer(object):
         dt = t2-self.t1
         num_indents = len(self.indent_levels)
         if self.print_msg:
-            print_line = "  "*num_indents + "%s %s"%(self.msg, self.format_dt(dt))
+            if 'prefix' in self.addendum:
+                print_line = "  "*num_indents + "%s %s %s"%(self.addendum['prefix'], self.msg, self.format_dt(dt))
+            else:
+                print_line = "  "*num_indents + "%s %s"%(self.msg, self.format_dt(dt))
             if 'postfix' in self.addendum:
                 print_line = '%s %s'%(print_line, self.addendum['postfix'])
             print(print_line)
@@ -52,6 +55,14 @@ class RunSpecs(Paths):
             cur_date += relativedelta(months=1)
         self.n_month = n_month
 
+        self.transcom_regions = [ # because someone was not diligent about putting this in the data files
+            'North American Boreal', 'North American Temperate', 'South American Tropical', 'South American Temperate',
+            'Northern Africa', 'Southern Africa', 'Eurasian Boreal', 'Eurasian Temperate', 'Tropical Asia', 'Australia',
+            'Europe', 'North Pacific Temperate', 'West Pacific Tropical', 'East Pacific Tropical', 'South Pacific Temperate',
+            'Northern Ocean', 'North Atlantic Temperate', 'Atlantic Tropical', 'South Atlantic Temperate', 'Southern Ocean',
+            'Indian Tropical', 'South Indian Temperate',
+            ]
+
 class Fluxes(RunSpecs):
 
     def __init__(self, *args, **kwargs):
@@ -61,13 +72,6 @@ class Fluxes(RunSpecs):
         self.original_mask = os.path.join(self.data_root, 'transcom/TRANSCOM_mask_original_1x1.nc')
         self.Re = 6.371E+6
         self.dS = {'regular': {}, 'geos': {}}
-        self.transcom_regions = [ # because someone was not diligent about putting this in the data files
-            'North American Boreal', 'North American Temperate', 'South American Tropical', 'South American Temperate',
-            'Northern Africa', 'Southern Africa', 'Eurasian Boreal', 'Eurasian Temperate', 'Tropical Asia', 'Australia',
-            'Europe', 'North Pacific Temperate', 'West Pacific Tropical', 'East Pacific Tropical', 'South Pacific Temperate',
-            'Northern Ocean', 'North Atlantic Temperate', 'Atlantic Tropical', 'South Atlantic Temperate', 'Southern Ocean',
-            'Indian Tropical', 'South Indian Temperate',
-            ]
         self.calculate_region_areas()
 
     def calculate_region_areas(self):
@@ -287,6 +291,10 @@ class Observations(RunSpecs):
         self.site_code_to_dataset = {
             'lef': ['co2_lef_tower-insitu_1_allvalid-396magl'],
             'amt': ['co2_amt_tower-insitu_1_allvalid-107magl'],
+            'wkt': ['co2_wkt_tower-insitu_1_allvalid-457magl'],
+            'wbi': ['co2_wbi_tower-insitu_1_allvalid-379magl', 'co2_wbi_surface-pfp_1_allvalid-379magl'],
+            'sct': ['co2_sct_surface-pfp_1_allvalid-305magl', 'co2_sct_tower-insitu_1_allvalid-305magl'],
+            'wgc': ['co2_wgc_tower-insitu_1_allvalid-483magl'],
             }
         self.unassim_mdm = 1.0E36 # ppm
 
@@ -346,6 +354,9 @@ class Observations(RunSpecs):
                 ds_ = self.get_datasets_from_site(site)
                 ds_ = [s for s in ds_ if 'flask' in s]
             obs_idx = self.get_indices_from_datasets(ds_)
+
+            if len(obs_idx) == 0:
+                continue
 
             site_times = obs_times[obs_idx]
             site_obs = obs_vector[obs_idx]
@@ -459,9 +470,8 @@ class Var4D_Components(RunSpecs):
             tccon_idx = fid.variables['TCCON_idx'][:]
             mip_mdm = fid.variables['mip_mdm'][:]
 
-        obs_err = np.zeros(nobs, dtype=np.float64)
         # by default assimilate nothing
-        obs_err[:] = self.obs_cons.unassim_mdm
+        obs_err = self.obs_cons.unassim_mdm * np.ones(nobs, dtype=np.float64)
 
         if 'oco2' in kwargs and kwargs['oco2']:
             obs_err[oco2_idx] = mip_mdm[oco2_idx]
@@ -510,7 +520,18 @@ class Var4D_Components(RunSpecs):
             assim_idx = self.obs_cons.get_indices_from_datasets(kwargs['datasets'])
             obs_err[assim_idx] = mip_mdm[assim_idx]
 
+        # we have the option of specifying a single MDM for all assimilated obs
+        if 'uniform_mdm' in kwargs:
+            assim_idx = obs_err < 0.5*self.obs_cons.unassim_mdm
+            obs_err[assim_idx] = kwargs['uniform_mdm']
+
+        # print the number of obs assimilated
+        print('%i of %i obs will be assimilated'%( (obs_err < 0.5*self.obs_cons.unassim_mdm).sum(), len(obs_err) ))
+
         return obs_err
+
+    def add_obs_bias(self, **kwargs):
+        pass
 
     def setup_obs(self, true_flux='CT2022', trans_model='GC', obs_to_assim={}):
         if true_flux.lower() == 'ct2022':
@@ -524,10 +545,15 @@ class Var4D_Components(RunSpecs):
         self.obs_err = self.setup_obs_errors(**obs_to_assim)
         self.true_flux = state_vec
 
-    def setup_corr(self, temp_corr, **kwargs):
+    def setup_corr(self, **kwargs):
         # the state vector is length 528, arranged as 'region 1 month 1', 'region 1 month 2', ... 'region 22 month 23', 'region 22 month 24'
         temp_corr_mat = np.zeros((self.n_month, self.n_month), np.float64)
         # temp_corr being a number N means exponentially decaying with an e-folding length of N months
+        try:
+            temp_corr = kwargs['temp_corr']
+        except KeyError:
+            raise RuntimeError('temp_corr must be specified')
+
         if isinstance(temp_corr, numbers.Number):
             if temp_corr == 0.0:
                 temp_corr_mat = np.eye(self.n_month)
@@ -547,7 +573,18 @@ class Var4D_Components(RunSpecs):
         hor_corr_mat = np.eye(self.n_region)
         if 'region_pairs' in kwargs:
             # syntax is {(region 1, region 2): corr, (region 3, region 4): corr}, etc.
-            for (ireg1,ireg2), r in kwargs['region_pairs'].items():
+            # regions can either be region names or numbers
+            all_regions = [s.lower() for s in self.transcom_regions]
+            for (reg1,reg2), r in kwargs['region_pairs'].items():
+                if isinstance(reg1, int):
+                    ireg1 = reg1
+                else:
+                    ireg1 = all_regions.index(reg1.lower())
+                if isinstance(reg2, int):
+                    ireg2 = reg2
+                else:
+                    ireg2 = all_regions.index(reg2.lower())
+
                 hor_corr_mat[ireg1,ireg2] = r
                 hor_corr_mat[ireg2,ireg1] = r
 
@@ -568,7 +605,7 @@ class Var4D_Components(RunSpecs):
 
         return cov_matrix
 
-    def var4d_setup(self, obs_to_assim={}):
+    def var4d_setup(self, obs_to_assim={'sites': ['mlo','spo']}, prior_unc_scale=0.25, corr_structure={'temp_corr': 2.0}):
         with Timer("Created true obs in ", print=self.verbose):
             # set up the obs with CT2022 as truth
             self.setup_obs(true_flux='CT2022', obs_to_assim=obs_to_assim)
@@ -576,9 +613,9 @@ class Var4D_Components(RunSpecs):
             # set up the prior, which is SiB4
             self.state_prior = self.flux_cons.construct_state_vector_from_sib4()
             # set up prior uncertainty, which (let's say) is 25% of the prior
-            self.unc_prior = 0.25 * np.abs(self.state_prior) # MAKE THIS FLEXIBLE
+            self.unc_prior = prior_unc_scale * np.abs(self.state_prior)
             # set up prior covariance matrix, assuming a 2 month decay and no cross-region correlation
-            prior_corr = self.setup_corr(temp_corr=2.0)
+            prior_corr = self.setup_corr(**corr_structure)
             # make correlation expicitly symmetric to avoid roundoff errors
             self.prior_corr = 0.5*(prior_corr + prior_corr.T)
             prior_cov = self.setup_cov(self.prior_corr, self.unc_prior)
@@ -694,9 +731,11 @@ class Var4D_Components(RunSpecs):
         max_iter = kwargs['max_iter'] if 'max_iter' in kwargs else 50
         optim_method = kwargs['optim_method'] if 'optim_method' in kwargs else 'BFGS'
         use_hessian = kwargs['hessian'] if 'hessian' in kwargs else False
-        obs_to_assim = kwargs['obs_to_assim'] if 'obs_to_assim' in kwargs else {'sites': ['mlo','spo']}
+        sites_to_output = set(self.obs_cons.site_code_to_dataset.keys())
+        sites_to_output = sites_to_output.union(set(self.obs_cons.mbl_sites))
+        sites_to_output = sites_to_output.union(set(self.obs_cons.noaa_observatories))
 
-        self.var4d_setup(obs_to_assim=obs_to_assim)
+        # self.var4d_setup(obs_to_assim=obs_to_assim)
 
         # Print number of function and adjoint evaluations
         if not self.verbose:
@@ -707,6 +746,9 @@ class Var4D_Components(RunSpecs):
             self.progress_bars['hessp'] = tqdm.tqdm(desc='Hessian product evaluation'.rjust(30), total=float('inf'), unit='')
 
         self.optim_diags = { # after optimization, show the progress of the cost function and gradient norm
+            'iter_grad': 0,
+            'iter_cost': 0,
+            'iter_hess': 0,
             'iter': 0,
             'cost_function': [],
             'gradient_norm': [],
@@ -714,10 +756,7 @@ class Var4D_Components(RunSpecs):
 
         # first, store the observations simulated with prior fluxes as model diagnostic
         obs_apri = self.forward_transport(self.state_prior)
-        self.obs_cons.save_timeseries_by_site(
-            self.obs_vec, obs_apri, self.obs_err, self.output_dir,
-            ['mlo', 'spo', 'smo', 'brw', 'kum', 'lef', 'amt'],
-            'apri', False)
+        self.obs_cons.save_timeseries_by_site(self.obs_vec, obs_apri, self.obs_err, self.output_dir, sites_to_output, 'apri', False)
 
         # now optimize
         minimize_args = dict(
@@ -735,10 +774,8 @@ class Var4D_Components(RunSpecs):
         self.state_poste_preco = res.x
         self.state_poste = self.state_to_flux(res.x)
         obs_apos = self.forward_transport(self.state_poste)
-        self.obs_cons.save_timeseries_by_site(
-            self.obs_vec, obs_apos, self.obs_err, self.output_dir,
-            ['mlo', 'spo', 'smo', 'brw', 'kum', 'lef', 'amt'],
-            'apos', True)
+        self.obs_cons.save_timeseries_by_site(self.obs_vec, obs_apos, self.obs_err, self.output_dir, sites_to_output, 'apos', True)
+
         self.var4d_done()
 
         if not self.verbose:
@@ -815,14 +852,19 @@ class Var4D_Components(RunSpecs):
     def hessian_product(self, p, x):
         # returns the product of the Hessian and vector x, without explicitly evaluating the Hessian
         # ignore p, the value of the state vector
-        with Timer("Calculated product with Hessian in ", print=self.verbose):
+        with Timer("Calculated product with Hessian in ", print=self.verbose) as tm:
             Lx = np.matmul(self.L, x)
             HLx = self.forward_transport(Lx)
             RinvHLx = HLx/(self.obs_err**2)
             HTRinvHLx = self.adjoint_transport(RinvHLx)
             LTHTRinvHLx = np.matmul(self.L.T, HTRinvHLx)
+
+            self.optim_diags['iter_hess'] += 1
+            tm['prefix'] = '[%i]'%self.optim_diags['iter_hess']
+
         if 'hessp' in self.progress_bars:
             self.progress_bars['hessp'].update()
+
         return LTHTRinvHLx
 
     def calculate_cost(self, state_vector):
@@ -837,6 +879,8 @@ class Var4D_Components(RunSpecs):
             bg_cost = 0.5 * np.sum(state_vector**2)
             total_cost = obs_cost + bg_cost
             self.optim_diags['cost_function'].append(total_cost)
+            self.optim_diags['iter_cost'] += 1
+            tm['prefix'] = '[%i]'%self.optim_diags['iter_cost']
             tm['postfix'] = '(J = %.4g)'%total_cost
 
         if 'cost' in self.progress_bars:
@@ -861,8 +905,10 @@ class Var4D_Components(RunSpecs):
             del self.mdm
             total_gradient = gradient_preco + state_vector
             self.optim_diags['iter'] += 1
+            self.optim_diags['iter_grad'] += 1
             gradient_norm = np.sqrt(np.sum(total_gradient**2))
             self.optim_diags['gradient_norm'].append(gradient_norm)
+            tm['prefix'] = '[%i]'%self.optim_diags['iter_grad']
             tm['postfix'] = u'(\u23b8\u2202J/\u2202\u03be\u23b9 = %.4g)'%gradient_norm
 
         if 'grad' in self.progress_bars:

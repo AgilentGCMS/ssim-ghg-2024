@@ -1,5 +1,4 @@
 import h5py
-from scipy import interpolate
 import numpy as np
 import sys
 import os

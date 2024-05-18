@@ -17,8 +17,8 @@ class Visualize(Paths):
             'apos': {'c': 'xkcd:orange red', 'mec': 'xkcd:orange red', 'mfc': 'xkcd:baby pink', 'marker': 's', 'ms': 5, 'mew': 0.5},
             }
         self.legend_props = dict(fontsize=12, labelspacing=0.2, handlelength=1, handletextpad=0.25, borderpad=0.2)
-        self.tick_font_property = dict(fontsize=12, family='Inconsolata')
-        self.label_font_property = dict(fontsize=14, family='Inconsolata')
+        self.tick_font_property = dict(fontsize=12, family=self.figure_font)
+        self.label_font_property = dict(fontsize=14, family=self.figure_font)
 
 class Visualize_Fluxes(Visualize):
 
@@ -153,8 +153,8 @@ class Visualize_Obs(Visualize):
             leg.set_draggable(True)
             plt.setp(leg.texts, family=self.label_font_property['family'])
 
-            diff_ax.plot(times, model_apri-obs, **self.plot_styles['apri'])
-            diff_ax.plot(times, model_apos-obs, **self.plot_styles['apos'])
+            diff_ax.plot(times, model_apri-obs, ls='none', **self.plot_styles['apri'])
+            diff_ax.plot(times, model_apos-obs, ls='none', **self.plot_styles['apos'])
 
             plot_ax.set_xlim(xmin, xmax)
             diff_ax.set_xlim(xmin, xmax)
@@ -171,4 +171,4 @@ class Visualize_Obs(Visualize):
             fig.text((lpad+0.5*width+iax*(width+wd_pad))/fig_width, 1.0-0.5*tpad/fig_height, site.upper(), ha='center', va='center', size=14)
 
         fig.text(0.05/fig_width, (bpad+diff_height+ht_pad+0.5*height)/fig_height, u'CO\u2082 (ppm)', ha='left', va='center', rotation=90, **self.label_font_property)
-        fig.text(0.05/fig_width, (bpad+0.5*diff_height)/fig_height, 'Difference (ppm)', ha='left', va='center', rotation=90, **self.label_font_property)
+        fig.text(0.05/fig_width, (bpad+0.5*diff_height)/fig_height, u'Model\u2009\u2212\u2009Obs (ppm)', ha='left', va='center', rotation=90, **self.label_font_property)
