@@ -41,11 +41,15 @@ for(i in 1:length(site_strings))
   
  df2 = df[ind,]
   
+ options(repr.plot.width=20, repr.plot.height=8)
+ 
   g =  ggplot(df2, aes(x = DATE, y = VALUE,color=TYPE)) + 
     scale_color_manual(values = c("blue","red","black")) +
     geom_point(size = 0.05) + 
     geom_smooth(method = "lm", formula = y ~ poly(x, 12), se = FALSE) +
-    labs(title=paste(site_strings[i],"Time series"),x ="Date", y = "CO2")
+    labs(title=paste(site_strings[i],"Time series"),x ="Date", y = "CO2") + 
+    theme(axis.text=element_text(size=12),axis.title=element_text(size=14,face="bold"),
+          title=element_text(size=16),legend.text=element_text(size=14))
   
   if(ggplotly){ggplotly(g)}else{print(g)}
  }

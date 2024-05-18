@@ -116,7 +116,7 @@ if(DOF){
   dimnames(prior_mean_out) = dimnames(x_hat)
   
   #-- Print chi square on assimilated
-  ch_ret = varTest(as.numeric((modeled_obs[subset_indicator_obs]-y[subset_indicator_obs])/R_diagonal_in))
+  ch_ret = varTest(as.numeric((modeled_obs[subset_indicator_obs]-y)/R_diagonal))
   print("Chi sq test on residuals of model fits")
   print(paste("var est=",floor(ch_ret$estimate*1e3)*1e-3," CI (stand variance, chi sq test): ",
               "(",floor(ch_ret$conf.int[["LCL"]]*1e3)*1e-3,",",ceiling(ch_ret$conf.int[["UCL"]]*1e3)*1e-3,")"))
