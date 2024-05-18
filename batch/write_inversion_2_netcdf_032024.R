@@ -1,6 +1,6 @@
-write_inversion_2_netcdfs=function(inv_object=ret2,prior_mean_ncdf=file.path(data_dir,"prior_SiB4.nc"),
+write_inversion_2_netcdfs=function(inv_object=ret2,prior_mean_ncdf=file.path(data_dir,"priors/prior_SiB4.nc"),
                           #sensitivity.matrix="/discover/nobackup/projects/csu/aschuh/data/inversion_workshop_data/rdas/trunc_full_jacob_030624_with_dimnames_sib4_4x5_mask.rda",
-                          sample_number=100,output_dir=output_dir)
+                          sample_number=40,output_dir=output_dir)
 {
 #-- set.seed ?  
   
@@ -15,7 +15,7 @@ require(plyr)
 require(dplyr)
   
 if(dir.exists(output_dir)){
-  warning(paste("overwriting inversion results in",output_dir))
+  print(paste("overwriting inversion results in",output_dir))
 }else{
   print(paste("creating",output_dir))
   dir.create(output_dir,recursive=TRUE)
@@ -98,6 +98,11 @@ varOBS_ASSIM_FLAG = ncvar_def(name="assim flag",
                       dim=cosample_dim,
                       prec="integer")
 
+varOBS_INPUT = ncvar_def(name="original input obs",
+                         units="mole fraction CO2",
+                         dim=cosample_dim,
+                         prec="float")
+  
 ##########################################
 #--  create netcdf vars for gridded fluxes
 ##########################################
@@ -230,6 +235,8 @@ obs_sd = inv_object$inputs$obs_errors
 
 obs_id = inv_object$inputs$obs_id
 
+obs_orig = inv_object$inputs$obs
+
 obs_type = rep("SAT_XCO2",dim(jacob)[1])
 obs_type[grep("obspack",obs_id)] = "INSITU"
 nch = sapply(obs_id,nchar)
@@ -246,13 +253,15 @@ print(paste("writing cosamples output...to ",outfile_name_cosamples))
 if(file.exists(outfile_name_cosamples)){file.remove(outfile_name_cosamples)}
 
 ncnew_cosamples = nc_create(outfile_name_cosamples,
-                                 vars=list(varOBS_TYPE,varOBS_ID,varOBS_MEAN,varOBS_SD,varOBS_ASSIM_FLAG),force_v4 = TRUE)
+                                 vars=list(varOBS_TYPE,varOBS_ID,varOBS_MEAN,varOBS_SD,varOBS_ASSIM_FLAG,varOBS_INPUT),force_v4 = TRUE)
  
 ncvar_put(ncnew_cosamples,varOBS_TYPE,vals=obs_type)
 
 ncvar_put(ncnew_cosamples,varOBS_ID,vals=obs_id)
 
 ncvar_put(ncnew_cosamples,varOBS_MEAN,vals=obs_mean)
+
+ncvar_put(ncnew_cosamples,varOBS_INPUT,vals=obs_orig)
 
 ncvar_put(ncnew_cosamples,varOBS_SD,vals=obs_sd)
 

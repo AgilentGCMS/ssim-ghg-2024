@@ -17,7 +17,7 @@ pull_true_transcom_flux = function(prior_flux_file,state_true)
 }
 
 generate_observations = function(H,H_bgd,state_vector,err_obs=NULL){
-  obs = H %*% (1+state_vector) + apply(H_bgd[,c(2,3)],1,sum)
+  obs = H %*% (1+state_vector) #+ apply(H_bgd[,c(2,3)],1,sum)
   if(!is.null(err_obs)){obs = obs + rnorm(err_obs)}
   return(obs)
 }
@@ -414,3 +414,4 @@ transcom_names = c("North American Boreal    ", "North American Temperate ",
                    "North Atlantic Temperate ", "Atlantic Tropical        ",
                    "South Atlantic Temperate ", "Southern Ocean           ",
                    "Indian Tropical          ", "South Indian Temperate   ")
+

@@ -74,6 +74,12 @@ obs_catalog = data.frame(TYPE=obs_type,ID=all_observations_ids_save,LON=all_lon_
 #-- BE AWARE, land prior and ocn prior won't perfectly match H %*% 1 since the serial runs grab hourly output and the Jacobians
 #-- grab hourly for first 4 months and daily avg afterwards
 
+#-- Each directory effectively contains one column of the Obs by State Jacobian
+dir_list = list.dirs("/discover/nobackup/projects/csu/aschuh/WOMBAT_stuff/20240109_basis_functions/sensitivities_sib4_prior/")
+base_inds = grep("base",dir_list)
+bgds = dir_list[base_inds]
+bgds = bgds[c(2,3,4,5,1)]
+
 for(i in 1:length(bgds))
 {
   print(paste("reading",bgds[i]))
@@ -89,8 +95,9 @@ for(i in 1:length(bgds))
       length(c(oco2_data$observation.id,tccon_data$observation.id,obspack_data$observation.id)) == 
         length(unique(c(oco2_data$observation.id,tccon_data$observation.id,obspack_data$observation.id)))
     )
-    #all_observation_ids <- c(oco2_data$observation.id,tccon_data$observation.id,obspack_data$observation.id)
-    jacob_bgd <- array(0, dim = c(length(c(oco2_data$observation.id,tccon_data$observation.id,obspack_data$observation.id)), 4))
+    all_observation_ids <- c(oco2_data$observation.id,tccon_data$observation.id,obspack_data$observation.id)
+    all_observations_ids_save <- all_observation_ids
+    jacob_bgd <- array(0, dim = c(length(c(oco2_data$observation.id,tccon_data$observation.id,obspack_data$observation.id)), 5))
   }
   #-- Match to above full Jacobian obs_id_list
   jacob_bgd[
@@ -106,7 +113,25 @@ dimnames(jacob_bgd)[[2]] = as.character(nms)
 dimnames(jacob_bgd)[[1]] = all_observations_ids_save
 
 #################################################################################################
-#save(jacob_bgd,file="/discover/nobackup/projects/csu/aschuh/temp/jacob_bgd_021824.rda")
+#save(jacob_bgd,file="/discover/nobackup/projects/csu/aschuh/temp/jacob_bgd_050924.rda")
 #################################################################################################
 
+# Sep 2019: operation_mode has been superceded by data_type
+# This is not the usual operation mode, it conflates surface type
+# with operation mode.  DFB has coded it into the last digit of the
+# sounding_id.
 
+# 1=land nadir, 2=land glint, 3=land target, 4=land transition,
+# 5=ocean nadir, 6=ocean glint, 7=ocean target, and 8=ocean
+# transition 
+
+#- MODIFY OBS_CATALOG TO ADD A FEW THINGS
+load("/projects/SSIM-GHG/data/obs/obs_catalog_042424_unit_pulse_hour_timestamp_witherrors.rda")
+obs_catalog$DATE = as.POSIXct(obs_catalog$TIME*60,origin = "2000-01-01",tz = "GMT")
+obs_catalog$YEAR = year(obs_catalog$DATE)
+obs_catalog$MONTH = month(obs_catalog$DATE)
+obs_catalog$SITE = NA
+#ind_IS = obs_catalog$TYPE == "IS"
+#obs_catalog[ind_IS,"SITE"] = sapply(obs_catalog[ind_IS,"ID"],
+#                                    FUN=function(x){strsplit(strsplit(x,"~")[[1]][2],"-")[[1]][1] })
+save(obs_catalog,file="/projects/SSIM-GHG/data/obs/obs_catalog_042424_unit_pulse_hour_timestamp_witherrors_withdates.rda")
