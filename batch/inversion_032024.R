@@ -2,7 +2,7 @@
 #-- PART III:    Basic inversion wrapper
 #################################################################################################
 
-invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL, DOF=FALSE)
+invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL, DOF=FALSE, output_Kalman_Gain=FALSE)
 { 
   # H=jacob;R_diagonal=R_diagonal_in;P_0=sigma;y=y_in;H_bgd=jacob_bgd
   
@@ -42,7 +42,8 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL, DOF=
   rm(HR)
   gc()
   
-  computation_1 = diag(diag(P_0)^-1) + tH_H
+  #computation_1 = diag(diag(P_0)^-1) + tH_H
+  computation_1 = solve(P_0) + tH_H
   
   rm(tH_H)
   
@@ -61,38 +62,39 @@ if(DOF){
   sum_trS = sum(trS)
   sum_trB = dim(P)[1] - sum(trS)
   print(paste("DFS:",sum_trS))
-  print(paste("DFB:",sum_trB))  
-  #----
-  #----
+  print(paste("DFB:",sum_trB))     
   }else{sum_trS=NULL;sum_trB=NULL}
-  
+
+  #----
+  #----
+  #---- 
+
+    
   apriori_obs = H %*% rep(1+0,dim(H)[2])
                         #generate_observations(H=H,H_bgd=H_bgd,
                         #state_vector=rep(0,(dim(H)[2])),err_obs=NULL)
 
   if(sum(!assim_T_F) == 1){
-      apriori_obs_non_assimilated = sum(H_non_assimilated * rep(1+0,length(H_non_assimilated))) #+ sum(H_bgd_non_assimilated[2:3])
+      apriori_obs_non_assimilated = sum(H_non_assimilated * rep(1+0,length(H_non_assimilated))) 
     }else{
-      apriori_obs_non_assimilated = H_non_assimilated %*% rep(1+0,dim(H_non_assimilated)[2]) #+ sum(H_bgd_non_assimilated[2:3])
-        
-                                             #generate_observations(H=H_non_assimilated,H_bgd=H_bgd_non_assimilated,
-                                             #state_vector=rep(0,(dim(H_non_assimilated)[2])),
-                                             #err_obs=NULL)
+      apriori_obs_non_assimilated = H_non_assimilated %*% rep(1+0,dim(H_non_assimilated)[2]) 
     }
   
   
-  computation_3 = matrix(y-(apriori_obs),ncol=1)
+  computation_3 = matrix((apriori_obs)-y,ncol=1)
   
   HR2 = H * R2_diagonal_inv
   
   HR2 = t(HR2)
+  
+  #if(output_Kalman_Gain){K = P %*% HR2}else{K = NULL}
   
   computation_4 = HR2  %*% computation_3 #+ xtra
   
   rm(HR2)
   
   print("...deriving posterior mean state, X_hat")
-  x_hat = P %*% computation_4
+  x_hat =  - P %*% computation_4
   
   rm(computation_4)
   rm(computation_3)
@@ -117,9 +119,15 @@ if(DOF){
   
   #-- Print chi square on assimilated
   ch_ret = varTest(as.numeric((modeled_obs[subset_indicator_obs]-y)/R_diagonal))
-  print("Chi sq test on residuals of model fits")
+  print("--Chi sq test on residuals of model fits--")
   print(paste("var est=",floor(ch_ret$estimate*1e3)*1e-3," CI (stand variance, chi sq test): ",
               "(",floor(ch_ret$conf.int[["LCL"]]*1e3)*1e-3,",",ceiling(ch_ret$conf.int[["UCL"]]*1e3)*1e-3,")"))
+
+  #-- Print chi square on assimilated
+  print("Chi sq test on residuals of state fits")
+  cstat = t(x_hat-state_vector_true) %*% solve(P) %*% (x_hat-state_vector_true)
+  print(paste("chi sq stat:",cstat))
+  
   
   print("Done....writing inversion object output")  
   return(list(posterior=list(x_hat=x_hat,P=P,inputs=inputs_list,outputs=list(modeled_obs=modeled_obs)),
