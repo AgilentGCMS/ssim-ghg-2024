@@ -1,18 +1,21 @@
 plot_concentrations = function(inversion=NULL,prior_netcdf="~/temp/output/test_output_prior/cosamples.nc4",
                                posterior_netcdf="~/temp/output/test_output_posterior/cosamples.nc4",
-                               site_strings=c("brw","mlo","smo","spo","lef","wkt","wbi","nwr","hun"),
-                               ggplotly=FALSE)
+                               site_strings=c("brw","mlo","smo","co2_spo_surface-flask","lef","wkt","wbi","nwr","hun"),
+                               ggplotly=FALSE,add_prior_nee=TRUE,add_fossil=TRUE,add_fire=TRUE)
 {
 library(plotly)
 if(!is.null(inversion))
 {
   ret2 = inversion
   
+  if(add_prior_nee){pr = ret2$prior$outputs$modeled_obs}else{pr = rep(0,length(ret2$prior$outputs$modeled_obs))}
+  if(add_fossil){pr = pr+ fossil_fixed}  else{}
+  if(add_fire){pr = pr+ fire_fixed}  else{}
   df = data.frame(ID=rep(obs_catalog$ID,3),
                   DATE=rep(obs_catalog$DATE,3),
-                  VALUE=c(ret2$posterior$inputs$obs,
-                          ret2$prior$outputs$modeled_obs,
-                          ret2$posterior$outputs$modeled_obs),
+                  VALUE=c(ret2$posterior$inputs$obs + pr,
+                          ret2$prior$outputs$modeled_obs + pr,
+                          ret2$posterior$outputs$modeled_obs + pr),
                   TYPE=c(rep("OBS",dim(obs_catalog)[1]),
                          rep("PRIOR",dim(obs_catalog)[1]),
                          rep("POSTERIOR",dim(obs_catalog)[1])))
