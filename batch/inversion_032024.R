@@ -66,15 +66,18 @@ if(DOF){
   #----
   }else{sum_trS=NULL;sum_trB=NULL}
   
-  apriori_obs = generate_observations(H=H,H_bgd=H_bgd,
-                        state_vector=rep(0,(dim(H)[2])),err_obs=NULL)
+  apriori_obs = H %*% rep(1+0,dim(H)[2])
+                        #generate_observations(H=H,H_bgd=H_bgd,
+                        #state_vector=rep(0,(dim(H)[2])),err_obs=NULL)
 
   if(sum(!assim_T_F) == 1){
-      apriori_obs_non_assimilated = sum(H_non_assimilated * rep(1+0,length(H_non_assimilated))) + sum(H_bgd_non_assimilated[2:3])
+      apriori_obs_non_assimilated = sum(H_non_assimilated * rep(1+0,length(H_non_assimilated))) #+ sum(H_bgd_non_assimilated[2:3])
     }else{
-      apriori_obs_non_assimilated = generate_observations(H=H_non_assimilated,H_bgd=H_bgd_non_assimilated,
-                                             state_vector=rep(0,(dim(H_non_assimilated)[2])),
-                                             err_obs=NULL)
+      apriori_obs_non_assimilated = H_non_assimilated %*% rep(1+0,dim(H_non_assimilated)[2]) #+ sum(H_bgd_non_assimilated[2:3])
+        
+                                             #generate_observations(H=H_non_assimilated,H_bgd=H_bgd_non_assimilated,
+                                             #state_vector=rep(0,(dim(H_non_assimilated)[2])),
+                                             #err_obs=NULL)
     }
   
   
@@ -97,8 +100,9 @@ if(DOF){
 #-- CORE INVERSION CODE ABOVE
     
 #-- Construct the modeled observations (obs assimilated + obs nonassimilated)
-  assim_obs = H %*% x_hat
-  non_assim_obs = H_non_assimilated %*% x_hat
+
+  assim_obs =  (H) %*% x_hat+ (H %*% rep(1,dim(H)[2]))
+  non_assim_obs =  (H_non_assimilated) %*% x_hat + (H_non_assimilated %*% rep(1,dim(H_non_assimilated)[2]))
   modeled_obs = rep(NA,obs_len_init)
   modeled_obs[subset_indicator_obs] = assim_obs
   modeled_obs[!subset_indicator_obs] = non_assim_obs
@@ -110,6 +114,12 @@ if(DOF){
   
   prior_mean_out = array(0,dim=dim(x_hat))
   dimnames(prior_mean_out) = dimnames(x_hat)
+  
+  #-- Print chi square on assimilated
+  ch_ret = varTest(as.numeric((modeled_obs[subset_indicator_obs]-y)/R_diagonal))
+  print("Chi sq test on residuals of model fits")
+  print(paste("var est=",floor(ch_ret$estimate*1e3)*1e-3," CI (stand variance, chi sq test): ",
+              "(",floor(ch_ret$conf.int[["LCL"]]*1e3)*1e-3,",",ceiling(ch_ret$conf.int[["UCL"]]*1e3)*1e-3,")"))
   
   print("Done....writing inversion object output")  
   return(list(posterior=list(x_hat=x_hat,P=P,inputs=inputs_list,outputs=list(modeled_obs=modeled_obs)),

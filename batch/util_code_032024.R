@@ -17,7 +17,7 @@ pull_true_transcom_flux = function(prior_flux_file,state_true)
 }
 
 generate_observations = function(H,H_bgd,state_vector,err_obs=NULL){
-  obs = H %*% (1+state_vector) + apply(H_bgd[,c(2,3)],1,sum)
+  obs = H %*% (1+state_vector) #+ apply(H_bgd[,c(2,3)],1,sum)
   if(!is.null(err_obs)){obs = obs + rnorm(err_obs)}
   return(obs)
 }
@@ -339,16 +339,23 @@ plot_transcom_flux_by_month = function(data=ret){
 plot_timeseries_flux_bytranscom = function(data=ret)
 {
   options(repr.plot.width=20, repr.plot.height=8)
+ 
+  mat_table = data.frame(NUMBER=1:22,NAME=transcom_names)
   
+  plt_df = ret$full_df
+  plt_df$REGION = mat_table$NAME[plt_df$REGION]
+                        
   #-- I believe this plot is monthly avg regional flux (in units of PgC/yr) for two years
-  g = ggplot(ret$full_df, aes(x=REGION, y= FLUX, fill=KIND)) +
+  g = ggplot(plt_df, aes(x=REGION, y= FLUX, fill=KIND)) +
     geom_boxplot(width=0.5) +   # outlier.shape = NA
     scale_fill_manual(values=c("red", "blue","green"))
   
   
-  new_data <- data.frame(REGION =1:22, FLUX=c(data$transcom_fluxes_real_annual_avg ), KIND=rep("Truth",22))
+  new_data <- data.frame(REGION =transcom_names, FLUX=c(data$transcom_fluxes_real_annual_avg ), KIND=rep("Truth",22))
   
-  g + geom_point(data=new_data, aes(x=REGION, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21)
+  g + geom_point(data=new_data, aes(x=REGION, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21) +
+    theme(axis.text.x = element_text(angle=70,size=15))
+  
 }
 
 #-- FORM DATA FRAME OF PRIOR/POSTERIOR USING SAMPLES FROM NETCDF FILES, FOR PLOTTING
@@ -414,3 +421,4 @@ transcom_names = c("North American Boreal    ", "North American Temperate ",
                    "North Atlantic Temperate ", "Atlantic Tropical        ",
                    "South Atlantic Temperate ", "Southern Ocean           ",
                    "Indian Tropical          ", "South Indian Temperate   ")
+
