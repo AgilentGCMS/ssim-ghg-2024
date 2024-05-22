@@ -1,4 +1,4 @@
-# Time-stamp: <hercules-login-1.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/base/compare_methods.r: 22 May 2024 (Wed) 23:22:38 UTC>
+# Time-stamp: <hercules-login-1.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/base/compare_methods.r: 22 May 2024 (Wed) 23:33:35 UTC>
 
 source("../tools/invert_clean.r")
 source("../tools/enkf.r")
@@ -9,8 +9,8 @@ indir <- find.indir()
 # Load sensitivity matrices (Jacobians)
 t0 <- proc.time()[3]
 cat("Loading Jacobians...")
-load(file.path(indir,"data/sensitivity_matrices/","trunc_full_jacob_030624_with_dimnames_sib4_4x5_mask.rda"))
-load(file.path(indir,"data/sensitivity_matrices/","jacob_bgd_021624.rda"))
+load(file.path(indir,"inversion_examples/jacobians/trunc_full_jacob_030624_with_dimnames_sib4_4x5_mask.rda"))
+load(file.path(indir,"inversion_examples/jacobians/jacob_bgd_021624.rda"))
 H <- jacob*(22/44) # Andrew reports units conversion needed
 H_fixed <- jacob_bgd[,c(2,3)]
 rm(jacob,jacob_bgd)
