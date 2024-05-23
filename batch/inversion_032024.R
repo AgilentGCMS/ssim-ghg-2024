@@ -2,7 +2,8 @@
 #-- PART III:    Basic inversion wrapper
 #################################################################################################
 
-invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL, DOF=FALSE, output_Kalman_Gain=FALSE)
+invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL, 
+                        DOF=FALSE, output_Kalman_Gain=FALSE, output_Infl_Matrix=FALSE)
 { 
   # H=jacob;R_diagonal=R_diagonal_in;P_0=sigma;y=y_in;H_bgd=jacob_bgd
   
@@ -69,6 +70,11 @@ if(DOF){
   #----
   #---- 
 
+  if(output_Infl_Matrix){
+    P_tH = P %*% t(H)
+    infl_matrix = colSums(t(H) * P_tH) * R2_diagonal_inv
+  }
+  
     
   apriori_obs = H %*% rep(1+0,dim(H)[2])
                         #generate_observations(H=H,H_bgd=H_bgd,
@@ -87,7 +93,14 @@ if(DOF){
   
   HR2 = t(HR2)
   
-  #if(output_Kalman_Gain){K = P %*% HR2}else{K = NULL}
+  if(output_Kalman_Gain){
+   prod1 = P_0 %*% t(H) 
+   sum1 = t(prod1) * (R2_diagonal_inv)
+   sum1 = t(sum1)
+   sum2 = - prod1 %*% t(HR2) %*% P %*% HR2
+   K = sum1 + sum2
+   rm(prod1);rm(sum1);rm(sum2);
+   }else{K = NULL}
   
   computation_4 = HR2  %*% computation_3 #+ xtra
   
@@ -117,20 +130,34 @@ if(DOF){
   prior_mean_out = array(0,dim=dim(x_hat))
   dimnames(prior_mean_out) = dimnames(x_hat)
   
-  #-- Print chi square on assimilated
+  #-- Print chi square on posterior resids vs assumed MDM
   ch_ret = varTest(as.numeric((modeled_obs[subset_indicator_obs]-y)/R_diagonal))
-  print("--Chi sq test on residuals of model fits--")
+  print("")
+  print("************************************************************")
+  print("--Chi sq test on posterior residuals relative to S_z--")
+  print("************************************************************")
   print(paste("var est=",floor(ch_ret$estimate*1e3)*1e-3," CI (stand variance, chi sq test): ",
               "(",floor(ch_ret$conf.int[["LCL"]]*1e3)*1e-3,",",ceiling(ch_ret$conf.int[["UCL"]]*1e3)*1e-3,")"))
 
-  #-- Print chi square on assimilated
-  print("Chi sq test on residuals of state fits")
-  cstat = t(x_hat-state_vector_true) %*% solve(P) %*% (x_hat-state_vector_true)
+  #-- Print chi square on posterior state vs truth, relative to posterior state cov
+  print("")
+  print("************************************************************")
+  print("--Chi sq test on posterior vs truth, relative to S_xpost--")
+  print("************************************************************" ) 
+  cstat = t(x_hat-state_vector_true) %*% solve(P) %*% (x_hat-state_vector_true) * 1/length(x_hat)
   print(paste("chi sq stat:",cstat))
   
+  #-- Print chi square on posterior state vs truth, relative to posterior state cov
+  print("")
+  print("*****************************************************************")
+  print("--Chi sq test: test variance of x_hat-x_prior, relative to S_0--")
+  print("*****************************************************************")  
+  cstat = t(x_hat) %*% solve(P_0) %*% x_hat * 1/length(x_hat)
+  print(paste("chi sq stat:",cstat))
   
   print("Done....writing inversion object output")  
-  return(list(posterior=list(x_hat=x_hat,P=P,inputs=inputs_list,outputs=list(modeled_obs=modeled_obs)),
-              prior=list(x_hat=prior_mean_out,P=as.matrix(P_0),inputs=inputs_list,outputs=list(modeled_obs=apriori_obs_out,DFS=sum_trS,DFB=sum_trB))))
+  return(list(posterior=list(x_hat=x_hat,P=as.matrix(P),inputs=inputs_list,outputs=list(modeled_obs=modeled_obs)),
+              prior=list(x_hat=prior_mean_out,P=as.matrix(P_0),inputs=inputs_list,outputs=list(modeled_obs=apriori_obs_out)),
+              diags=list(KGAIN=K,DFS=sum_trS,DFB=sum_trB)))
              
 }
