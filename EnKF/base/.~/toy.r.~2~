@@ -1,0 +1,213 @@
+# Time-stamp: <hercules-login-1.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/toy/toy.r: 21 May 2024 (Tue) 02:36:18 UTC>
+
+indirs <- c(sprintf("%s/Presentations/2024/enkf_summer_school/notebooks/SSIM-GHG",Sys.getenv("HOME")), # location on Andy's machine
+            "/work/noaa/co2/andy/Projects/enkf_summer_school/notebooks/SSIM-GHG", # location on GHG Center
+            file.path(Sys.getenv("HOME"),"shared","SSIM-GHG")) # location on GHG Center
+
+for (indir in indirs) {
+    if(dir.exists(indir)) {
+        cat(sprintf("Using input dir \"%s\"\n",indir))
+        break
+    }
+}
+
+if(!dir.exists(indir)) {
+    stop("Error: None of the potential input directories exists.")
+}
+rm(indirs) # leaves indir
+
+#require(Matrix)
+#require(MixMatrix)
+#require(lattice)
+
+###############################################
+#--  Load sensitivity matrices
+###############################################
+load(file.path(indir,"data/sensitivity_matrices/","trunc_full_jacob_030624_with_dimnames_sib4_4x5_mask.rda"))
+load(file.path(indir,"data/sensitivity_matrices/","jacob_bgd_021624.rda"))
+
+source(file.path(indir,"data/R_code/util_code_032024.R"))
+
+##################################################################
+#-- This array holds ratios of OCO2v10MIP fluxes and SiB4 fluxes
+#-- as examples of "scalings" to be recovered. It also holds corresponding
+#-- differences if the inversion attempts to directly solve for flux
+#-- truth_array(24 months, 23 transcom, 98 inversions, (ratio, difference) )
+##################################################################
+
+#load("/projects/sandbox/inversion_workshop_scripts/truth_array.rda")
+#load(file.path(indir,"data/truth_array.rda"))
+
+#state_vector_true= tm(as.vector(truth_array[,-1,1,1]),-1,1)
+
+#state_vector_true = c(rep(0.5,24*11),rep(-0.5,24*11))
+
+#state_vector_mat = matrix(state_vector_true,nrow=24,byrow=FALSE)
+#dim(state_vector_mat)
+#state_vector_mat[,15]
+
+#########################################################
+# Generate a prior flux covariance matrix P_0
+# Long term, a catalog of predefined choices is best here I think
+#########################################################
+#land_prior_sd = 0.5
+#ocean_prior_sd = 1
+
+#-- induce temporal correlations
+#temporal_cov = list(ARgenerate(n=24, rho=0.5))
+#sigma = bdiag(rep(temporal_cov,11*2))
+
+#-- scale by variance for land/ocean
+#var_scaling_diagonal = diag(c(rep(land_prior_sd,24*11),rep(ocean_prior_sd,24*11)))
+#sigma = var_scaling_diagonal %*% sigma %*% t(var_scaling_diagonal)
+
+##########################################################
+#-- sd for Gaussian i.i.d. errors, jacob is sens matrix
+##########################################################
+R_diagonal_in = rep(.01,(dim(jacob)[1])) # variance in ppm^2
+
+##########################################
+#-- Generate obs, 'y',  set.seed() ????
+##########################################
+
+#y_in = generate_observations(H=jacob,H_bgd=jacob_bgd,
+#                             state_vector=state_vector_true,err_obs=R_diagonal_in)
+
+
+####################################################################################
+#-- WHICH obs do you want to use in the inversion? 
+#-- examples of selecting on stations, type of data, lat/lon box,etc
+####################################################################################
+
+#load(file.path(indir,"data/obs_catalog_030624.rda")) # obs_catalog object
+
+#subset_indicator_obs=rep(TRUE,dim(jacob)[1])
+
+############################
+#-- Run the actual inversion
+############################
+
+#source("../SSIM-GHG/data/R_code/inversion_032024.R")
+#source("invert_clean.r")
+source("../../batch/inversion_032024.R")
+source("enkf.r")
+source("progress.bar.r")
+
+nmemb <- 5000
+nparms <- 22*24 # 22 regions, 24 months
+
+Sx <- diag(rep(1,nparms))
+Sx.prior <- 1e4*Sx # uninformative prior
+
+x <- matrix(0,nrow=nparms,ncol=1) # prior central value
+dx <- generate_ensemble(Sx=Sx.prior,nmemb=nmemb) # prior deviations
+
+truth_condition <- generate_ensemble(Sx=Sx,nmemb=1)
+dim(truth_condition) <- c(nparms,1)
+
+nobs <- dim(jacob)[1]
+r <- rep(3,nobs)
+obs <- simulate_observed(H=jacob, x=truth_condition,H_fixed=jacob_bgd[,c(2,3)],r=r)
+#obs <- simulate_observed(H=jacob, x=truth_condition,H_fixed=jacob_bgd[,c(2,3)])
+dim(obs) <- c(nobs,1)
+
+nobs <- 10000
+
+
+# retrict to nobs subset
+lx <- sample(x=1:length(obs),size=nobs)
+#dy <- dy[lx,]
+#y <- y[lx]
+obs <- obs[lx,]
+r <- r[lx]
+jacob <- jacob[lx,]
+jacob_bgd <- jacob_bgd[lx,]
+
+
+# generate obs and obs deviations corresponding to x and the dx
+# parameter deviations.  Note that H_fixed are the fire and FF
+# components sampled at the obs locations.
+
+y <- simulate_observed(H=jacob,x=x,
+                       H_fixed=jacob_bgd[,c(2,3)])
+dy <- t(simulate_observed(H=jacob,x=t(dx),
+                          H_fixed=jacob_bgd[,c(2,3)]))
+
+
+
+# The rejection and localization procedures are (currently) both
+# serial loops over nobs and are therefore very slow. They are
+# amenable to trivial parallelization, but this is not yet
+# implemented. They also can be combined into one procedure, which is
+# what we do operationally.
+
+reject.outliers <- FALSE
+localize <- FALSE
+
+if(reject.outliers) {
+  rej.mask <- find_outliers(y=y,dy=dy,obs=obs,r=r)
+
+  if(any(rej.mask==1)) {
+    cat(sprintf("%d observations rejected as outliers\n",
+                length(which(rej.mask==1))))
+    lx <- which(rej.mask==0) # these are the ones to keep
+    dy <- dy[lx,]
+    y <- y[lx]
+    obs <- obs[lx]
+    r <- r[lx]
+    H <- jacob[lx,]
+    H_fixed <- jacob_bgd[lx,]
+  }
+}
+
+nobs <- length(obs)
+
+if(localize) {
+  loc.mask <- localization_tval(dx=dx,dy=dy)
+  
+  cat(sprintf("%.1f%% of obs-parm relationships localized away.\n",
+              100*length(which(as.vector(loc.mask)==0))/(nparms*nobs)))
+} else {
+  loc.mask <- NULL
+}
+obs_bgd <- apply(jacob_bgd[,c(2,3)],c(1),sum)
+
+# obs-obs_bgd because we remove the fixed components.
+post <- enkf_meas_update_loc(x=x,dx=dx,obs=obs-obs_bgd,
+                             y=y,dy=dy,r=r,
+                             localization_mask=loc.mask)
+
+Sx.enkf <- cov(post$dx)
+
+subset_indicator_obs=rep(TRUE,dim(jacob)[1])
+ret2 = invert_clean(H=jacob,R_diagonal=r,P_0=Sx.prior,y=obs,H_bgd=jacob_bgd,
+                    subset_indicator_obs=subset_indicator_obs)
+
+kf <- kf_meas_update(x=x,Sx=Sx.prior,H=jacob,z=obs-obs_bgd,
+                     Sz=diag(r))
+
+posterior.dofs <- FALSE
+
+if(posterior.dofs) {
+  ndofs.ic <- ndofs.patil(ret2$posterior$P)
+  ndofs.kf <- ndofs.patil(kf$Sx)
+  ndofs.enkf <- ndofs.patil(Sx.enkf)
+} else {
+  ndofs.ic <- nparms
+  ndofs.kf <- nparms
+  ndofs.enkf <- nparms
+}
+
+chi2.kf <- (1/ndofs.kf) * t(kf$x - truth_condition) %*% solve(kf$Sx) %*% (kf$x - truth_condition)
+
+chi2.enkf <- (1/ndofs.enkf) * t(post$x - truth_condition) %*% solve(Sx.enkf) %*% (post$x - truth_condition)
+
+chi2.ic <- (1/ndofs.ic) * t(ret2$posterior$x_hat + 1 - truth_condition) %*% solve(ret2$posterior$P) %*% (ret2$posterior$x_hat + 1 - truth_condition)
+
+cat(sprintf("Schuh: chi2mn_state: %.2f on %d DOFs; RMSE %.2f\n",chi2.ic,ndofs.ic,compute.rmse(ret2$posterior$x_hat - truth_condition)))
+
+cat(sprintf("   KF: chi2mn_state: %.2f on %d DOFs; RMSE %.2f\n",chi2.kf,ndofs.kf,compute.rmse(kf$x - truth_condition)))
+
+cat(sprintf(" EnKF: chi2mn_state: %.2f on %d DOFs, RMSE %.2f\n",chi2.enkf,ndofs.enkf,compute.rmse(post$x - truth_condition)))
+
+save(post,kf,ret2,truth_condition,file="res.rda")
