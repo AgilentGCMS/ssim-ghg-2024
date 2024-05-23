@@ -605,10 +605,21 @@ class Var4D_Components(RunSpecs):
 
         return cov_matrix
 
-    def var4d_setup(self, obs_to_assim={'sites': ['mlo','spo']}, prior_unc_scale=0.25, corr_structure={'temp_corr': 2.0}):
+    def var4d_setup(self, **kwargs):
+        obs_to_assim = kwargs['obs_to_assim']  if 'obs_to_assim' in kwargs else {'sites': ['mlo','spo']}
+        prior_unc_scale = kwargs['prior_unc_scale'] if 'prior_unc_scale' in kwargs else 0.25
+        corr_structure = kwargs['corr_structure'] if 'corr_structure' in kwargs else {'temp_corr': 2.0}
+        perturb_obs = kwargs['perturb_obs'] if 'perturb_obs' in kwargs else False
+        perturb_flux = kwargs['perturb_flux'] if 'perturb_flux' in kwargs else False
+
         with Timer("Created true obs in ", print=self.verbose):
             # set up the obs with CT2022 as truth
             self.setup_obs(true_flux='CT2022', obs_to_assim=obs_to_assim)
+            if perturb_obs:
+                assim_idx = self.obs_err < 0.5*self.obs_cons.unassim_mdm
+                self.obs_vec[assim_idx] = self.obs_vec[assim_idx] + np.random.standard_normal(assim_idx.sum()) * self.obs_err[assim_idx]
+                print('Perturbed %i of %i obs'%(assim_idx.sum(), len(assim_idx)))
+
         with Timer("Prior fluxes and covariance setup in ", print=self.verbose):
             # set up the prior, which is SiB4
             self.state_prior = self.flux_cons.construct_state_vector_from_sib4()
@@ -626,6 +637,10 @@ class Var4D_Components(RunSpecs):
             # set the prior in preconditioned space to be a vector of zeros
             n_state = self.state_prior.shape[0]
             self.state_prior_preco = np.zeros(n_state, dtype=np.float64)
+            if perturb_flux:
+                random_vector = np.random.standard_normal(n_state)
+                print('Perturbed preconditioned state with mean %.4f and standard deviation %.4f'%(random_vector.mean(), random_vector.std()))
+                self.state_prior = self.state_to_flux(random_vector)
 
         self.progress_bars = {}
         if self.store_intermediate_states:
@@ -760,7 +775,7 @@ class Var4D_Components(RunSpecs):
 
         # now optimize
         minimize_args = dict(
-            method=optim_method, jac=self.calculate_gradient, callback=self.loop_callback,
+            method=optim_method, jac=self.calculate_gradient,
             options={'maxiter': max_iter, 'disp': self.verbose},
             )
         if use_hessian and optim_method in ['Newton-CG', 'trust-krylov', 'trust-ncg', 'trust-constr']:
