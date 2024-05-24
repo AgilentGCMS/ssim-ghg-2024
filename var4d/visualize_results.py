@@ -114,17 +114,22 @@ class Visualize_Fluxes(Visualize):
         num_regions = len(region_names)
         ax_dict = dict.fromkeys(region_names)
         height = 3.0
+        diff_height = 1.5
         width = 4.0
         lpad = 0.6
         rpad = 0.1
-        bpad = 0.5
+        bpad = 0.1
+        ht_pad = 0.6
         wd_pad = 0.4
         tpad = 0.3
         fig_width = lpad + num_regions*width + (num_regions-1)*wd_pad + rpad
-        fig_height = bpad + height + tpad
+        fig_height = bpad + diff_height + ht_pad + height + tpad
         fig = plt.figure(figsize=(fig_width, fig_height))
         for i, region in enumerate(region_names):
-            ax_dict[region] = plt.axes([(lpad+i*(width+wd_pad))/fig_width, bpad/fig_height, width/fig_width, height/fig_height])
+            ax_dict[region] = {
+                'plot': plt.axes([(lpad+i*(width+wd_pad))/fig_width, (bpad+diff_height+ht_pad)/fig_height, width/fig_width, height/fig_height]),
+                'diff': plt.axes([(lpad+i*(width+wd_pad))/fig_width, bpad/fig_height, width/fig_width, diff_height/fig_height]),
+                }
 
         result_file = os.path.join(self.output_dir, 'optim_summary.nc')
         with Dataset(result_file, 'r') as fid:
@@ -143,16 +148,16 @@ class Visualize_Fluxes(Visualize):
                 if plot_errs and self.project in self.error_dirs:
                     error_file = os.path.join(self.output_root, self.error_dirs[self.project], 'optim_summary_spread.nc')
                     with Dataset(error_file, 'r') as e_fid:
-                        prior_ensemble = e_fid.variables['prior_flux'][:,region_index]
-                        poste_ensemble = e_fid.variables['poste_flux'][:,region_index]
-                    prior_err = np.std(prior_ensemble, axis=0) * region_areas[region_index] * flux_conversion_factor
-                    poste_err = np.std(poste_ensemble, axis=0) * region_areas[region_index] * flux_conversion_factor
+                        prior_ensemble = e_fid.variables['prior_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
+                        poste_ensemble = e_fid.variables['poste_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
+                    prior_err = np.std(prior_ensemble, axis=0)
+                    poste_err = np.std(poste_ensemble, axis=0)
                 else:
                     plot_errs = False
 
                 time_vals = np.arange(len(month_times))
 
-                plot_ax = ax_dict[region]
+                plot_ax = ax_dict[region]['plot']
                 if plot_errs:
                     plot_ax.fill_between(time_vals, prior_flux-prior_err, prior_flux+prior_err,
                         zorder=0, fc=self.plot_styles['apri']['mfc'], ec=self.plot_styles['apri']['mec'], lw=0.5, alpha=0.6)
@@ -168,14 +173,42 @@ class Visualize_Fluxes(Visualize):
                 tot_true = np.average(true_flux[indices_for_total], weights=month_lengths)
                 tot_prior = np.average(prior_flux[indices_for_total], weights=month_lengths)
                 tot_poste = np.average(poste_flux[indices_for_total], weights=month_lengths)
+                if plot_errs: # calculate error on the totals
+                    prior_ensemble_total = np.zeros(prior_ensemble.shape[0], dtype=prior_ensemble.dtype)
+                    poste_ensemble_total = np.zeros(poste_ensemble.shape[0], dtype=poste_ensemble.dtype)
+                    for i_en in range(prior_ensemble.shape[0]):
+                        prior_ensemble_total[i_en] = np.average(prior_ensemble[i_en][indices_for_total], weights=month_lengths)
+                        poste_ensemble_total[i_en] = np.average(poste_ensemble[i_en][indices_for_total], weights=month_lengths)
+                    tot_prior_err = np.std(prior_ensemble_total)
+                    tot_poste_err = np.std(poste_ensemble_total)
+                    plot_ax.errorbar(time_vals[-1]+0.8, tot_prior, yerr=tot_prior_err,
+                        fmt='none', ecolor=self.plot_styles['apri']['mec'], elinewidth=1, capsize=3)
+                    plot_ax.errorbar(time_vals[-1]+1.2, tot_poste, yerr=tot_poste_err,
+                        fmt='none', ecolor=self.plot_styles['apos']['mec'], elinewidth=1, capsize=3)
 
                 plot_ax.plot(time_vals[-1]+1, tot_true, **self.plot_styles['obs'])
-                plot_ax.plot(time_vals[-1]+1, tot_prior, **self.plot_styles['apri'])
-                plot_ax.plot(time_vals[-1]+1, tot_poste, **self.plot_styles['apos'])
+                plot_ax.plot(time_vals[-1]+0.8, tot_prior, **self.plot_styles['apri'])
+                plot_ax.plot(time_vals[-1]+1.2, tot_poste, **self.plot_styles['apos'])
 
                 leg = plot_ax.legend(loc='best', numpoints=1, **self.legend_props)
                 leg.set_draggable(True)
                 plt.setp(leg.texts, family=self.label_font_property['family'])
+
+                diff_ax = ax_dict[region]['diff']
+                if plot_errs:
+                    diff_ax.fill_between(time_vals, prior_flux-true_flux-prior_err, prior_flux-true_flux+prior_err,
+                        zorder=0, fc=self.plot_styles['apri']['mfc'], ec=self.plot_styles['apri']['mec'], lw=0.5, alpha=0.6)
+                    diff_ax.fill_between(time_vals, poste_flux-true_flux-poste_err, poste_flux-true_flux+poste_err,
+                        zorder=0, fc=self.plot_styles['apos']['mfc'], ec=self.plot_styles['apos']['mec'], lw=0.5, alpha=0.6)
+                    diff_ax.errorbar(time_vals[-1]+0.8, tot_prior-tot_true, yerr=tot_prior_err,
+                        fmt='none', ecolor=self.plot_styles['apri']['mec'], elinewidth=1, capsize=3)
+                    diff_ax.errorbar(time_vals[-1]+1.2, tot_poste-tot_true, yerr=tot_poste_err,
+                        fmt='none', ecolor=self.plot_styles['apos']['mec'], elinewidth=1, capsize=3)
+                else:
+                    diff_ax.plot(time_vals, prior_flux-true_flux, ls='--', lw=1, **self.plot_styles['apri'])
+                    diff_ax.plot(time_vals, poste_flux-true_flux, ls='-', lw=1, **self.plot_styles['apos'])
+                diff_ax.plot(time_vals[-1]+0.8, tot_prior-tot_true, **self.plot_styles['apri'])
+                diff_ax.plot(time_vals[-1]+1.2, tot_poste-tot_true, **self.plot_styles['apos'])
 
                 xtick_locs = time_vals[::3]
                 xtick_labels = [d.strftime('%b\n%Y') for d in month_times[::3]]
@@ -185,18 +218,25 @@ class Visualize_Fluxes(Visualize):
 
                 plot_ax.set_xticks(xtick_locs)
                 plot_ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+                diff_ax.set_xticks(xtick_locs)
+                diff_ax.yaxis.set_major_locator(MaxNLocator(integer=True))
 
                 plot_ax.set_xticklabels(xtick_labels, **self.tick_font_property)
                 plt.setp(plot_ax.get_yticklabels(), **self.tick_font_property)
+                plt.setp(diff_ax.get_yticklabels(), **self.tick_font_property)
 
                 plot_ax.grid(True, ls='--')
+                diff_ax.grid(True, ls='--')
                 plot_ax.axvspan(time_vals[-1]+0.5, time_vals[-1]+1.5, ec=None, fc='0.75')
+                diff_ax.axvspan(time_vals[-1]+0.5, time_vals[-1]+1.5, ec=None, fc='0.75')
 
                 plot_ax.set_xlim(time_vals[0]-0.5, time_vals[-1]+1.5)
+                diff_ax.set_xlim(time_vals[0]-0.5, time_vals[-1]+1.5)
 
                 fig.text((lpad+0.5*width+iax*(width+wd_pad))/fig_width, 1.0-0.5*tpad/fig_height, region.title(), ha='center', va='center', **self.label_font_property)
 
-        fig.text(0.05/fig_width, (bpad+0.5*height)/fig_height, u'CO\u2082 flux (PgC/year)', ha='left', va='center', rotation=90, **self.label_font_property)
+        fig.text(0.05/fig_width, (bpad+diff_height+ht_pad+0.5*height)/fig_height, u'CO\u2082 flux (PgC/year)', ha='left', va='center', rotation=90, **self.label_font_property)
+        fig.text(0.05/fig_width, (bpad+0.5*diff_height)/fig_height, u'Model\u2009\u2212\u2009True', ha='left', va='center', rotation=90, **self.label_font_property)
 
 class Visualize_Obs(Visualize):
 
@@ -263,8 +303,14 @@ class Visualize_Obs(Visualize):
             leg.set_draggable(True)
             plt.setp(leg.texts, family=self.label_font_property['family'])
 
-            diff_ax.plot(times, model_apri-obs, ls='none', **self.plot_styles['apri'])
-            diff_ax.plot(times, model_apos-obs, ls='none', **self.plot_styles['apos'])
+            if plot_errs:
+                diff_ax.fill_between(times, model_apri-obs-apri_err, model_apri-obs+apri_err,
+                    zorder=0, fc=self.plot_styles['apri']['mfc'], ec=self.plot_styles['apri']['mec'], lw=0.5, alpha=0.6)
+                diff_ax.fill_between(times, model_apos-obs-apos_err, model_apos-obs+apos_err,
+                    zorder=0, fc=self.plot_styles['apos']['mfc'], ec=self.plot_styles['apos']['mec'], lw=0.5, alpha=0.6)
+            else:
+                diff_ax.plot(times, model_apri-obs, ls='none', **self.plot_styles['apri'])
+                diff_ax.plot(times, model_apos-obs, ls='none', **self.plot_styles['apos'])
 
             plot_ax.set_xlim(xmin, xmax)
             diff_ax.set_xlim(xmin, xmax)
