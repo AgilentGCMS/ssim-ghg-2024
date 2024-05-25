@@ -444,13 +444,48 @@ plot_inversion_correlations = function(org_data)
   p2 = levelplot(post_cor_flux,col.regions=my.col(20),at=seq(-rng1,rng1,length=20),main="Posterior Correlation in Avg Annual Flux between Transcom Region ",scales=list(x=list(rot=60)),
                  xlab="",ylab="")
   
-  p3 = levelplot(prior_time_cor_flux,col.regions=my.col(20),at=seq(-rng2,rng2,length=20),main="Posterior Correlation in time in global flux",scales=list(x=list(rot=60)),
+  p3 = levelplot(prior_time_cor_flux,col.regions=my.col(20),at=seq(-rng2,rng2,length=20),main="Prior Correlation in time in global flux",scales=list(x=list(rot=60)),
                  xlab="",ylab="")
   
   p4 = levelplot(post_time_cor_flux,col.regions=my.col(20),at=seq(-rng2,rng2,length=20),main="Posterior Correlation in time in global flux ",scales=list(x=list(rot=60)),
                  xlab="",ylab="")
   
   marrangeGrob(list(p1,p2,p3,p4),nrow=2,ncol=2)
+}
+
+plot_inversion_correlations_by_transcom = function(org_data)
+{
+  dts = c("Sep 2014","Oct 2014","Nov 2014","Dec 2014","Jan 2015","Feb 2015","Mar 2015","Apr 2015",
+          "May 2015","Jun 2015","Jul 2015","Aug 2015","Sep 2015","Oct 2015","Nov 2015","Dec 2015",
+          "Jan 2016","Feb 2016","Mar 2016","Apr 2016",
+          "May 2016","Jun 2016","Jul 2016","Aug 2016")
+  
+  for(i in 1:22)
+  {
+  transcom_subset_post = t(org_data$post_tr_monthly[,,i])
+  transcom_subset_prior = t(org_data$prior_tr_monthly[,,i])
+  
+  post_cor_flux = cor(transcom_subset_post)
+  prior_cor_flux = cor(transcom_subset_prior)
+  dimnames(post_cor_flux) = list(dts,dts)
+  dimnames(prior_cor_flux) = list(dts,dts)
+  
+  diag(post_cor_flux) = NA
+  diag(prior_cor_flux) = NA
+  
+  rng1 = max(abs(c(as.vector(prior_cor_flux),c(as.vector(post_cor_flux)))),na.rm=TRUE)
+  
+  options(repr.plot.width = 20, repr.plot.height = 20)
+  
+  p1 = levelplot(prior_cor_flux,col.regions=my.col(20),at=seq(-rng1,rng1,length=20),main=paste("Prior Correlation in Month to Month flux for",transcom_names[i]),scales=list(x=list(rot=60)),
+                 xlab="",ylab="")
+  
+  p2 = levelplot(post_cor_flux,col.regions=my.col(20),at=seq(-rng1,rng1,length=20),main=paste("Posterior Correlation in Month to Month flux for",transcom_names[i]),scales=list(x=list(rot=60)),
+                 xlab="",ylab="")
+  
+  print(marrangeGrob(list(p1,p2),nrow=1,ncol=2))
+  }
+
 }
 
 dts = c("Sep 2014","Oct 2014","Nov 2014","Dec 2014","Jan 2015","Feb 2015","Mar 2015","Apr 2015",
