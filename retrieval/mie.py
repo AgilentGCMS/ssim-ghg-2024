@@ -206,7 +206,7 @@ def mie_phase_function(band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_
     x_aerosol.append(2.*np.pi*(d_aerosol/2.)/(band_wl[i]*1e-6))
 
   #Number of angles for S1 and S2 function in range from 0 to pi/2
-  phase_res = 10 
+  phase_res = 1000
 
   #Mie scattering, on the instrument wavelength grid
   P11 = []
@@ -222,7 +222,7 @@ def mie_phase_function(band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_
   #Calculate scattering angle
   a = np.cos(np.deg2rad(sza)) * np.cos(np.deg2rad(sza_0))
   b = (1.-np.cos(np.deg2rad(sza))**2.)**0.5 * (1.-np.cos(np.deg2rad(sza_0))**2.)**0.5
-  scattering_angle = np.arccos(a+b) #In radians
+  scattering_angle = np.pi - np.arccos(a+b) #In radians
   scattering_angles = np.linspace(0,np.pi,(phase_res*2)-1) #0 to 180 deg
 
   #Evaulate the phase function at the scattering angle and flip to get from wl space to wn space

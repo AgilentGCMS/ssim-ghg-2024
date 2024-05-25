@@ -174,7 +174,7 @@ class ForwardFunction:
                     tau_star_temp_co2 += tau_temp_co2
                     tau_star_temp_ch4 += tau_temp_ch4
 
-                    #For analytic Jacobians, only add the layer aod above height_aerosol (?)
+                    #For analytic Jacobians, only add the layer aod above height_aerosol
                     tau_above_aerosol_star_temp_q[:,self.p_layer < self.height_aerosol] += tau_temp_q[:,self.p_layer < self.height_aerosol]
                     tau_above_aerosol_star_temp_co2[:,self.p_layer < self.height_aerosol] += tau_temp_co2[:,self.p_layer < self.height_aerosol]
                     tau_above_aerosol_star_temp_ch4[:,self.p_layer < self.height_aerosol] += tau_temp_ch4[:,self.p_layer < self.height_aerosol]
@@ -219,11 +219,11 @@ class ForwardFunction:
         #print("Calculating radiances...")
         for i in range(len(self.band_min_um)):
 
-            #Approximately scale tau_aerosol by qext in the first band
-            if self.tau_aerosol != None:  tau_aerosol_temp = self.tau_aerosol * (self.qext_aerosol[i] / np.mean(self.qext_aerosol[0]))
+            if self.tau_aerosol != None: tau_aerosol_temp = np.full(len(self.qext_aerosol[i]),self.tau_aerosol)
             else: tau_aerosol_temp = np.zeros(len(self.qext_aerosol[i]))
 
-            I, I_albedo, I_aerosol, I_q, I_co2, I_ch4 = self.intensity(self.band_absco_res_wn[i],self.tau_star_band[i],self.tau_above_aerosol_star_band[i],self.tau_star_band_q[i],self.tau_above_aerosol_star_band_q[i],self.tau_star_band_co2[i],self.tau_above_aerosol_star_band_co2[i],self.tau_star_band_ch4[i],self.tau_above_aerosol_star_band_ch4[i],tau_aerosol_temp,self.ssa_aerosol[i],self.P_aerosol[i],self.qext_aerosol[i],self.mu,self.mu_0,self.m,self.albedo[i],self.band_solar_irradiances[i],self.jacobians)
+            I, I_albedo, I_aerosol, I_q, I_co2, I_ch4 = self.intensity(self.band_absco_res_wn[i],self.tau_star_band[i],self.tau_above_aerosol_star_band[i],self.tau_star_band_q[i],self.tau_above_aerosol_star_band_q[i],self.tau_star_band_co2[i],self.tau_above_aerosol_star_band_co2[i],self.tau_star_band_ch4[i],self.tau_above_aerosol_star_band_ch4[i],tau_aerosol_temp,self.ssa_aerosol[i],self.P_aerosol[i],self.qext_aerosol[0],self.qext_aerosol[i],self.mu,self.mu_0,self.m,self.albedo[i],self.band_solar_irradiances[i],self.jacobians)
+
 
             #Calculate the spectral response function (with and without multiplying by intensity)
             Sc_I_band, Sc_I_band_albedo, Sc_I_band_aerosol, Sc_I_band_q, Sc_I_band_co2, Sc_I_band_ch4 = self.spectral_response_function(self.band_wn_index[i],self.band_absco_res_wn[i],self.sigma_band[i],self.ILS_Gaussian_term[i],I,I_albedo,I_aerosol,I_q,I_co2,I_ch4,self.jacobians)
@@ -282,7 +282,7 @@ class ForwardFunction:
 
 
     #Calculate intensities for a single band
-    def intensity(self,band,tau_star_band,tau_above_aerosol_star_band,tau_star_band_q,tau_above_aerosol_star_band_q,tau_star_band_co2,tau_above_aerosol_star_band_co2,tau_star_band_ch4,tau_above_aerosol_star_band_ch4,tau_aerosol,ssa_aerosol,P_aerosol,qext_aerosol,mu,mu_0,m,albedo,band_solar_irradiances,jacobians):
+    def intensity(self,band,tau_star_band,tau_above_aerosol_star_band,tau_star_band_q,tau_above_aerosol_star_band_q,tau_star_band_co2,tau_above_aerosol_star_band_co2,tau_star_band_ch4,tau_above_aerosol_star_band_ch4,tau_aerosol,ssa_aerosol,P_aerosol,qext_aerosol_band_0,qext_aerosol,mu,mu_0,m,albedo,band_solar_irradiances,jacobians):
 
       I = np.zeros((len(band))) #wn
       I_albedo = np.zeros((len(band))) #wn x layers
@@ -291,20 +291,23 @@ class ForwardFunction:
       I_co2 = np.zeros((len(band),tau_star_band_q.shape[1])) #wn x layers
       I_ch4 = np.zeros((len(band),tau_star_band_q.shape[1])) #wn x layers
 
-      exp_term = np.exp(-m*(tau_star_band + tau_aerosol))
+      #Direct exponential term
+      exp_term = np.exp(-m*(tau_star_band + tau_aerosol*qext_aerosol/qext_aerosol_band_0[0]))
+
+      #Scattering exponential term
       exp_term_above_aerosol = np.exp(-m*tau_above_aerosol_star_band)
 
       for i in range(len(band)):
         #Add an aerosol layer. Assume it scatters once.
-        I[i] = band_solar_irradiances/np.pi * (albedo*mu_0*exp_term[i] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*exp_term_above_aerosol[i]/4./mu)
+        I[i] = band_solar_irradiances/np.pi * (albedo*mu_0*exp_term[i] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*(qext_aerosol[i]/qext_aerosol_band_0[0])*exp_term_above_aerosol[i]/4./mu)
 
         #Calculate analytical Jacobians
         if jacobians:
           I_albedo[i] = band_solar_irradiances/np.pi * mu_0 * exp_term[i]
-          I_aerosol[i] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i]) + ssa_aerosol[i]*P_aerosol[i]*exp_term_above_aerosol[i]/4./mu)
-          I_q[i,:] = band_solar_irradiances/np.pi * (albedo*mu_0*exp_term[i] * (-m) * tau_star_band_q[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*exp_term_above_aerosol[i]/4./mu * (-m) * tau_above_aerosol_star_band_q[i,:])
-          I_co2[i,:] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i] * tau_star_band_co2[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*exp_term_above_aerosol[i]/4./mu * tau_above_aerosol_star_band_co2[i,:]))
-          I_ch4[i,:] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i] * tau_star_band_ch4[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*exp_term_above_aerosol[i]/4./mu * tau_above_aerosol_star_band_ch4[i,:]))
+          I_aerosol[i] = band_solar_irradiances/np.pi * (-m*(qext_aerosol[i]/qext_aerosol_band_0[0])*(albedo*mu_0*exp_term[i]) + ssa_aerosol[i]*P_aerosol[i]*(qext_aerosol[i]/qext_aerosol_band_0[0])*exp_term_above_aerosol[i]/4./mu)
+          I_q[i,:] = band_solar_irradiances/np.pi * (albedo*mu_0*exp_term[i] * (-m) * tau_star_band_q[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*(qext_aerosol[i]/qext_aerosol_band_0[0])*exp_term_above_aerosol[i]/4./mu * (-m) * tau_above_aerosol_star_band_q[i,:])
+          I_co2[i,:] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i] * tau_star_band_co2[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*(qext_aerosol[i]/qext_aerosol_band_0[0])*exp_term_above_aerosol[i]/4./mu * tau_above_aerosol_star_band_co2[i,:]))
+          I_ch4[i,:] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i] * tau_star_band_ch4[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*(qext_aerosol[i]/qext_aerosol_band_0[0])*exp_term_above_aerosol[i]/4./mu * tau_above_aerosol_star_band_ch4[i,:]))
 
       return I, I_albedo, I_aerosol, I_q, I_co2, I_ch4
 
