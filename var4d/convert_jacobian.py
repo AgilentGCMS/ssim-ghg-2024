@@ -37,6 +37,21 @@ class Paths(object):
         self.bg_rda = os.path.join(self.data_root, 'jacobians/jacob_bgd_021624.rda')
         self.bg_nc = os.path.join(self.data_root, 'jacobians/jacob_bgd_021624.nc')
 
+        self.region_aggregates = {
+            'North America': ['North American Boreal', 'North American Temperate'],
+            'South America': ['South American Tropical', 'South American Temperate'],
+            'Africa': ['Northern Africa', 'Southern Africa'],
+            'Eurasia': ['Eurasian Boreal', 'Eurasian Temperate', 'Tropical Asia'],
+            'Pacific Ocean': ['North Pacific Temperate', 'West Pacific Tropical', 'East Pacific Tropical', 'South Pacific Temperate'],
+            'Atlantic Ocean': ['North Atlantic Temperate', 'Atlantic Tropical', 'South Atlantic Temperate'],
+            'Indian Ocean': ['Indian Tropical', 'South Indian Temperate'],
+            'Global Land': ['North American Boreal', 'North American Temperate', 'South American Tropical', 'South American Temperate',
+                'Northern Africa', 'Southern Africa', 'Eurasian Boreal', 'Eurasian Temperate', 'Tropical Asia', 'Australia', 'Europe'],
+            'Global Ocean': ['North Pacific Temperate', 'West Pacific Tropical', 'East Pacific Tropical', 'South Pacific Temperate',
+                'Northern Ocean', 'North Atlantic Temperate', 'Atlantic Tropical', 'South Atlantic Temperate', 'Southern Ocean',
+                'Indian Tropical', 'South Indian Temperate'],
+            }
+
 class Convert_RDA(Paths):
 
     def __init__(self, *args, **kwargs):
