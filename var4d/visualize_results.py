@@ -22,6 +22,8 @@ class Visualize(Paths):
         self.label_font_property = dict(fontsize=14, family=self.figure_font)
         self.error_dirs = {
             'only_noaa_observatories': 'only_noaa_observatories_mc/summary',
+            'noaa_observatories': 'noaa_observatories_mc/summary',
+            'mip_is': 'mip_is_mc/summary',
             }
 
 class Monte_Carlo_avg(Paths):
