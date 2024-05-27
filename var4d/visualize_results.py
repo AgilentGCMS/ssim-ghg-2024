@@ -22,6 +22,8 @@ class Visualize(Paths):
         self.label_font_property = dict(fontsize=14, family=self.figure_font)
         self.error_dirs = {
             'only_noaa_observatories': 'only_noaa_observatories_mc/summary',
+            'noaa_observatories': 'noaa_observatories_mc/summary',
+            'mip_is': 'mip_is_mc/summary',
             }
 
 class Monte_Carlo_avg(Paths):
@@ -89,6 +91,7 @@ class Monte_Carlo_avg(Paths):
                         ofid.createDimension("n_state", len(ifid.dimensions["n_state"]))
                         ofid.createDimension("n_region", len(ifid.dimensions['n_region']))
                         ofid.createDimension('n_month', len(ifid.dimensions['n_month']))
+                        ofid.createDimension('n_ymd', 3)
 
                         for var_name in var_list_to_write:
                             v_in = ifid.variables[var_name]
@@ -97,10 +100,122 @@ class Monte_Carlo_avg(Paths):
                             for attr_name in v_in.ncattrs():
                                 setattr(v_out, attr_name, getattr(v_in, attr_name))
 
+                        # some variables to be copied over without an additional "members" dimension
+                        for var_name in ['region_areas', 'time_coordinate']:
+                            v_in = ifid.variables[var_name]
+                            v_out = ofid.createVariable(var_name, v_in.dtype, v_in.dimensions, **comp_dict)
+                            for attr_name in v_in.ncattrs():
+                                setattr(v_out, attr_name, getattr(v_in, attr_name))
+                            v_out[:] = v_in[:]
+
                     for var_name in var_list_to_write:
                         ofid.variables[var_name][i] = ifid.variables[var_name][:]
 
             setattr(ofid, 'creation_date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+    def calculate_annual_correlation(self, emis_ensemble, region_1, region_2, region_names):
+        # emis_ensemble is members x regions x months(12), Kg CO2/region/month
+        n_members, n_regions, n_months = emis_ensemble.shape
+        annual_total_1 = np.zeros(n_members, dtype=np.float64)
+        annual_total_2 = np.zeros(n_members, dtype=np.float64)
+        if region_1 in region_names:
+            reg_idx_1 = region_names.index(region_1)
+        elif region_1 in self.region_aggregates:
+            reg_idx_1 = np.array([region_names.index(reg) for reg in self.region_aggregates[region_1]])
+        else:
+            raise RuntimeError('Do not know how to make emissions of %s'%region_1)
+        if region_2 in region_names:
+            reg_idx_2 = region_names.index(region_2)
+        elif region_2 in self.region_aggregates:
+            reg_idx_2 = np.array([region_names.index(reg) for reg in self.region_aggregates[region_2]])
+        else:
+            raise RuntimeError('Do not know how to make emissions of %s'%region_2)
+
+        for i_memb in range(n_members):
+            if isinstance(reg_idx_1, np.ndarray):
+                annual_total_1[i_memb] = emis_ensemble[i_memb][reg_idx_1,:].sum()
+            else:
+                annual_total_1[i_memb] = emis_ensemble[i_memb,reg_idx_1].sum()
+            if isinstance(reg_idx_2, np.ndarray):
+                annual_total_2[i_memb] = emis_ensemble[i_memb][reg_idx_2,:].sum()
+            else:
+                annual_total_2[i_memb] = emis_ensemble[i_memb,reg_idx_2].sum()
+
+        return np.corrcoef(annual_total_1, annual_total_2)[0,1]
+
+    def plot_annual_correlations(self, year=2015):
+        summary_file = os.path.join(self.summary_dir, 'optim_summary_spread.nc')
+        with Dataset(summary_file, 'r') as fid:
+            emis_ensemble_apri = fid.variables['prior_flux'][:] # kg CO2/m^2/s
+            emis_ensemble_apos = fid.variables['poste_flux'][:] # kg CO2/m^2/s
+            time_coords = fid.variables['time_coordinate'][:] # (year,month,day)
+            region_areas = fid.variables['region_areas'][:] # m^2
+            region_names = fid.variables['region_areas'].region_names.split(',')
+
+        time_indices = np.where(time_coords[:,0] == year)[0]
+        assert len(time_indices) == 12, "Did not find all months for year %i"%year
+        emis_ensemble_apri = emis_ensemble_apri[:,:,time_indices]
+        emis_ensemble_apos = emis_ensemble_apos[:,:,time_indices]
+
+        # convert to per month
+        month_lengths = [calendar.monthrange(year,m)[1] for m in range(1,13)]
+        for im in range(12):
+            emis_ensemble_apri[:,:,im] = emis_ensemble_apri[:,:,im] * 86400 * month_lengths[im] # Kg CO2/m^2/month
+            emis_ensemble_apos[:,:,im] = emis_ensemble_apos[:,:,im] * 86400 * month_lengths[im] # Kg CO2/m^2/month
+
+        # convert to per region
+        for i_reg, area in enumerate(region_areas):
+            emis_ensemble_apri[:,i_reg,:] = emis_ensemble_apri[:,i_reg,:] * area # Kg CO2/region/month
+            emis_ensemble_apos[:,i_reg,:] = emis_ensemble_apos[:,i_reg,:] * area # Kg CO2/region/month
+
+        all_regions = region_names + list(self.region_aggregates.keys())
+        n_reg = len(all_regions)
+        corrcoeffs_apri = np.zeros((n_reg, n_reg), dtype=np.float64)
+        corrcoeffs_apos = np.zeros((n_reg, n_reg), dtype=np.float64)
+
+        num_evals = n_reg*(n_reg-1)//2
+        with tqdm.tqdm(total=num_evals, desc='Calculating correlation coefficients') as pbar:
+            for ireg_1, region_1 in enumerate(all_regions):
+                for ireg_2 in range(ireg_1+1):
+                    region_2 = all_regions[ireg_2]
+                    corrcoeffs_apri[ireg_1, ireg_2] = self.calculate_annual_correlation(emis_ensemble_apri, region_1, region_2, region_names)
+                    corrcoeffs_apos[ireg_1, ireg_2] = self.calculate_annual_correlation(emis_ensemble_apos, region_1, region_2, region_names)
+                    if ireg_1 != ireg_2:
+                        corrcoeffs_apri[ireg_2, ireg_1] = corrcoeffs_apri[ireg_1, ireg_2]
+                        corrcoeffs_apos[ireg_2, ireg_1] = corrcoeffs_apos[ireg_1, ireg_2]
+                    pbar.update()
+
+        # now plot
+        width = 5.0 ; height = 5.0
+        lpad = 1.7 ; bpad = 1.7
+        tpad = 0.3 ; rpad = 0.5
+        cbar_pad = 0.1 ; cbar_width = 0.2 ; wd_pad = 0.1
+        figwidth = lpad + 2*width + wd_pad + cbar_pad + cbar_width + rpad
+        figheight = bpad + height + tpad
+        fig = plt.figure(figsize=(figwidth, figheight))
+        apri_ax = plt.axes([lpad/figwidth, bpad/figheight, width/figwidth, height/figheight])
+        apos_ax = plt.axes([(lpad+width+wd_pad)/figwidth, bpad/figheight, width/figwidth, height/figheight])
+        cbar_ax = plt.axes([(lpad+2*width+wd_pad+cbar_pad)/figwidth, bpad/figheight, cbar_width/figwidth, height/figheight])
+
+        img = apri_ax.imshow(corrcoeffs_apri, interpolation='nearest', vmin=-1., vmax=1., cmap=plt.cm.bwr, origin='lower')
+        img = apos_ax.imshow(corrcoeffs_apos, interpolation='nearest', vmin=-1., vmax=1., cmap=plt.cm.bwr, origin='lower')
+        cbar = plt.colorbar(mappable=img, cax=cbar_ax, orientation='vertical')
+
+        apri_ax.set_xticks(np.arange(n_reg))
+        apri_ax.set_xticklabels(all_regions, rotation=90, fontsize=10, family=self.figure_font)
+        apri_ax.set_yticks(np.arange(n_reg))
+        apri_ax.set_yticklabels(all_regions, fontsize=10, family=self.figure_font)
+        apos_ax.set_xticks(np.arange(n_reg))
+        apos_ax.set_xticklabels(all_regions, rotation=90, fontsize=10, family=self.figure_font)
+        apos_ax.set_yticklabels([])
+
+        cbar_ax.set_yticks(np.arange(-1.,1.1,0.2))
+        plt.setp(cbar_ax.get_yticklabels(), size=12, family=self.figure_font)
+
+        fig.text((lpad+0.5*width)/figwidth, 1.0-0.5*tpad/figheight,
+            'Prior correlation between annual fluxes', ha='center', va='center', size=14, family=self.figure_font)
+        fig.text((lpad+1.5*width+wd_pad)/figwidth, 1.0-0.5*tpad/figheight,
+            'Posterior correlation between annual fluxes', ha='center', va='center', size=14, family=self.figure_font)
 
 class Visualize_Fluxes(Visualize):
 
