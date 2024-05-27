@@ -1,4 +1,4 @@
-# Time-stamp: <hercules-login-1.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/tools/enkf.r: 22 May 2024 (Wed) 22:31:52 UTC>
+# Time-stamp: <hercules-login-1.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/tools/enkf.r: 23 May 2024 (Thu) 21:36:54 UTC>
 
 compute.rmse <- function(x,na.rm=TRUE) {
   return(sqrt(mean(x^2,na.rm=na.rm)))
@@ -20,7 +20,12 @@ my.Pearsons.corr <- function(dx,dy) {
 }
 
 ndofs.patil <- function(S) {
-# Compute no. of DOFs following Patil et al (2001)
+  # Compute no. of DOFs following Patil et al (2001): D. J. Patil,
+  # B. R. Hunt, E. Kalnay, J. A. Yorke, and E. Ott. Local low
+  # dimensionality of atmospheric dynamics. Phys. Rev. Lett.,
+  # 86:5878–5881, Jun 2001. doi:10.1103/PhysRevLett.86.5878.
+  #
+  # Caution: not a standard measure of the DOFs
   library(svd)
   dd <- svd(S)
   ndofs <- round(sum(dd$d)^2/sum(dd$d^2))
@@ -69,7 +74,9 @@ generate_ensemble <- function(x=NA,Sx,nmemb) {
   return(t(x + D %*% e))
 }
 
-simulate_observed <- function(H,x,H_fixed=NULL,r=NULL) {
+simulate_observed <- function(H,x,H_fixed=NULL,Szd=NULL) {
+  # Note: Szd is in ppm^2 (variance), and is the diagonal of a
+  # presumably-diagonal matrix.
   nobs <- dim(H)[1]
   nparms <- dim(H)[2]
   if(is.null(dim(x))) {
@@ -90,8 +97,8 @@ simulate_observed <- function(H,x,H_fixed=NULL,r=NULL) {
     }
   }
 
-  if(!is.null(r)) {
-    retval <- retval + rnorm(mean=0,sd=sqrt(r),n=nobs)
+  if(!is.null(Szd)) {
+    retval <- retval + rnorm(mean=0,sd=sqrt(Szd),n=nobs)
   }
   return(retval)
 }
@@ -121,7 +128,9 @@ localization_tval <- function(dx,dy,threshold.prob=0.975) {
   return(retval)
 }
 
-find_outliers <- function(y,dy,obs,r,rejection.threshold=3) {
+find_outliers <- function(y,dy,obs,Szd,rejection.threshold=3) {
+  # Note: Szd is in ppm^2 (variance), and is the diagonal of a
+  # presumably-diagonal matrix.
 
   nobs <- dim(dy)[1]
   nmemb <- dim(dy)[2]
@@ -131,7 +140,7 @@ find_outliers <- function(y,dy,obs,r,rejection.threshold=3) {
   pb <- progress.bar.start(sprintf("detecting outliers for %d obs",nobs),nobs)
   
   for(iobs in 1:nobs) {
-    shqhr <- sqrt((1/(nmemb-1))*sum(dy[iobs,] %*% t(dy[iobs,])) + r[iobs])
+    shqhr <- sqrt((1/(nmemb-1))*sum(dy[iobs,] %*% t(dy[iobs,])) + Szd[iobs])
   
     # check for rejection
     z <- (y[iobs]-obs[iobs])/shqhr
@@ -147,14 +156,14 @@ find_outliers <- function(y,dy,obs,r,rejection.threshold=3) {
 }
 
 # EnSRF measurement update with localization
-enkf_meas_update_loc <- function(x,dx,obs,y,dy,r,localization_mask=NULL) {
+enkf_meas_update_loc <- function(x,dx,obs,y,dy,Szd,localization_mask=NULL) {
 
   # x   - prior state central value (nparms x 1)
   # dx  - prior state ensemble deviations (nparms x nmemb)
   # obs - observed values (nobs x 1)
   # y   - central value simulated values (nobs x 1)
   # dy  - ensemble simulated values (nobs x nmemb)
-  # r   - measurement error vector (MDM); in units of variance (nobs x nobs). Not a matrix; is diagonal of formal Sz matrix
+  # Szd - measurement error vector (MDM); in units of variance (nobs x 1). Not a matrix; is diagonal of formal Sz matrix
   # localization_mask - matrix of 1s and 0s to multiply K and potentially zero-out the effect of a given obs on a given parameter (nparms x nobs) 
   
   nobs <- length(y)
@@ -172,7 +181,7 @@ enkf_meas_update_loc <- function(x,dx,obs,y,dy,r,localization_mask=NULL) {
   # python's cholesky() returns a lower-triangular matrix.  We need
   # lower-triangular, so all R calls to chol() are wrapped in t().
     
-  HQHR <- (1/(nmemb-1))*(t(dy) %*% dy) + diag(r)
+  HQHR <- (1/(nmemb-1))*(t(dy) %*% dy) + diag(Szd)
   HQHRi <- solve(HQHR)
   
   HQ <- (1/(nmemb-1))*(t(dx) %*% dy)
@@ -191,7 +200,7 @@ enkf_meas_update_loc <- function(x,dx,obs,y,dy,r,localization_mask=NULL) {
   sHQHR <- t(chol(HQHR))
   sHQHRi <- solve(sHQHR)
 
-  Ktilde <- HQ %*% t(sHQHRi) %*% solve(sHQHR + diag(sqrt(r)))  # whitaker02a, eqn 10
+  Ktilde <- HQ %*% t(sHQHRi) %*% solve(sHQHR + diag(sqrt(Szd)))  # whitaker02a, eqn 10
   
   # apply localization mask to Ktilde
   if(!is.null(localization_mask)) {
@@ -209,7 +218,7 @@ enkf_meas_update_loc <- function(x,dx,obs,y,dy,r,localization_mask=NULL) {
 # Kalman filter measurement update.
 #
 # Update the solution {x,Sx} with additional 
-# observations {z,Pz} obeying the form z = Hx
+# observations {z,Sz} obeying the form z = Hx
 
 kf_meas_update <- function(x,Sx,H,z,Sz) {
 
