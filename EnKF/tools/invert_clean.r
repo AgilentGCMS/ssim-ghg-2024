@@ -1,3 +1,5 @@
+# From Andrew Schuh, copied for convenience to this location
+
 invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL, DOF=FALSE)
 {
   # H=jacob;R_diagonal=R_diagonal_in;P_0=sigma;y=y_in;H_bgd=jacob_bgd

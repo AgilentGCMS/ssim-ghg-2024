@@ -160,13 +160,21 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL,
   print(paste("chi sq stat:",cstat))
   
 #-- Print chi square on posterior state vs truth, relative to posterior state cov
+#  print("")
+#  print("*****************************************************************")
+#  print("--Chi sq test: test variance of x_hat-x_prior, relative to S_0--")
+#  print("*****************************************************************")  
+#  cstat = t(x_hat) %*% solve(P_0) %*% x_hat * 1/length(x_hat)
+#  print(paste("chi sq stat:",cstat))
+
+  #-- TEST chi square on posterior state vs truth, relative to posterior state cov
   print("")
   print("*****************************************************************")
-  print("--Chi sq test: test variance of x_hat-x_prior, relative to S_0--")
+  print("--Chi sq test: test variance of x_prior, relative to S_0--")
   print("*****************************************************************")  
-  cstat = t(x_hat) %*% solve(P_0) %*% x_hat * 1/length(x_hat)
+  cstat = t(state_vector_true) %*% solve(P_0) %*% state_vector_true * 1/length(state_vector_true)
   print(paste("chi sq stat:",cstat))
-
+  
 #--  Write out the inversion "object"
   print("Done....writing inversion object output")  
   return(list(posterior=list(x_hat=x_hat,P=as.matrix(P),inputs=inputs_list,outputs=list(modeled_obs=modeled_obs)),
