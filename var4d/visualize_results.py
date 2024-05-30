@@ -24,6 +24,7 @@ class Visualize(Paths):
             'only_noaa_observatories': 'only_noaa_observatories_mc/summary',
             'noaa_observatories': 'noaa_observatories_mc/summary',
             'mip_is': 'mip_is_mc/summary',
+            'mip_oco2': 'mip_oco2_mc/summary',
             }
 
 class Monte_Carlo_avg(Paths):
