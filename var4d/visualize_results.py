@@ -24,6 +24,7 @@ class Visualize(Paths):
             'only_noaa_observatories': 'only_noaa_observatories_mc/summary',
             'noaa_observatories': 'noaa_observatories_mc/summary',
             'mip_is': 'mip_is_mc/summary',
+            'mip_oco2': 'mip_oco2_mc/summary',
             }
 
 class Monte_Carlo_avg(Paths):
@@ -255,12 +256,24 @@ class Visualize_Fluxes(Visualize):
 
             flux_conversion_factor = (12.01/44.01) * (1.0E-12 * 86400.0 * 365.25) # from Kg CO2/s to Pg C/year
             for iax,region in enumerate(region_names):
-                region_index = region_names_in_file.index(region.lower())
-                prior_flux = fid.variables['prior_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
-                poste_flux = fid.variables['poste_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
-                true_flux  = fid.variables['true_flux'][region_index]  * region_areas[region_index] * flux_conversion_factor # PgC/year
+                if region.lower() in region_names_in_file:
+                    region_index = region_names_in_file.index(region.lower())
+                    prior_flux = fid.variables['prior_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
+                    poste_flux = fid.variables['poste_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
+                    true_flux  = fid.variables['true_flux'][region_index]  * region_areas[region_index] * flux_conversion_factor # PgC/year
 
-                if plot_errs and self.project in self.error_dirs:
+                elif region in self.region_aggregates:
+                    region_components = [s.lower() for s in self.region_aggregates[region]]
+                    prior_flux = 0.0
+                    poste_flux = 0.0
+                    true_flux = 0.0
+                    for reg_comp in region_components:
+                        region_index = region_names_in_file.index(reg_comp)
+                        prior_flux += fid.variables['prior_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
+                        poste_flux += fid.variables['poste_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
+                        true_flux  += fid.variables['true_flux'][region_index]  * region_areas[region_index] * flux_conversion_factor # PgC/year
+
+                if plot_errs and self.project in self.error_dirs: # TODO: add errors on region aggregates
                     error_file = os.path.join(self.output_root, self.error_dirs[self.project], 'optim_summary_spread.nc')
                     with Dataset(error_file, 'r') as e_fid:
                         prior_ensemble = e_fid.variables['prior_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
