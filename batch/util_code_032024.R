@@ -11,8 +11,10 @@ pull_true_transcom_flux = function(prior_flux_file,state_true)
 
   zz = aaply(NEE_1x1,3,.fun=function(x){grid2transcom(x,file_location=data_dir)})
   yy = matrix(state_true,nrow=24,byrow=FALSE)
-  qq = zz[,-1]*yy
-  transcom_fluxes_real = apply(qq,2,sum) *30.5*3600*24*1e3*0.5 * 1e-15 # ~ PgC/yr adjustment to prior
+  #qq = zz[,-1]*yy
+  #transcom_fluxes_real = apply(qq,2,sum)  *12/44   *30.5*3600*24*1e3*0.5 * 1e-15 # ~ PgC/yr adjustment to prior
+  qq = zz[,-1]*yy *12/44   *30.5*3600*24*1e3*0.5 * 1e-15 
+  transcom_fluxes_real = apply(qq,2,sum)   # ~ PgC/yr adjustment to prior
   ret = list(monthly=qq,annual_2yr=transcom_fluxes_real)
   return(ret)
 }
@@ -292,6 +294,7 @@ plot_transcom_flux_by_month = function(ret){
     g = ggplot(combined_df, aes(x=MONTH, y= FLUX, fill=KIND)) +
       geom_boxplot(width=0.5) +   # outlier.shape = NA
       scale_fill_manual(values=c("red", "blue","green")) +
+      ylab("PgC/year") +
       geom_point(data=new_data, aes(x=MONTH, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21) +
       labs(title=transcom_names[transcom_region_plot_monthly]) + theme(axis.text=element_text(size=12),
                                                                        axis.title=element_text(size=14,face="bold"),title=element_text(size=16),legend.text=element_text(size=14))
@@ -327,6 +330,7 @@ plot_transcom_flux_by_month = function(ret){
   g = ggplot(combined_df, aes(x=MONTH, y= FLUX, fill=KIND)) +
     geom_boxplot(width=0.5) +   # outlier.shape = NA
     scale_fill_manual(values=c("red", "blue","green")) +
+    ylab("PgC/year") +
     geom_point(data=new_data, aes(x=MONTH, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21) +
     labs(title="Global CO2 Flux") + theme(axis.text=element_text(size=12),
                                           axis.title=element_text(size=14,face="bold"),title=element_text(size=16),legend.text=element_text(size=14))
@@ -345,16 +349,38 @@ plot_timeseries_flux_bytranscom = function(ret)
   
   plt_df = ret$full_df
   plt_df$REGION = mat_table$NAME[plt_df$REGION]
-                        
+ 
+  
+  #-- Plot global sum 
+  subset = ret$prior_tr_monthly_global
+  subset = apply(subset,c(2),sum)     #*30.5*3600*24*1e3*0.5 * 1e-15# ~ gC/yr 
+  prior_df = cbind(FLUX=as.vector(subset),KIND=rep("Prior",length(subset)))
+  
+  subset = ret$post_tr_monthly_global
+  subset = apply(subset,c(2),sum)     #*30.5*3600*24*1e3*0.5 * 1e-15# ~ gC/yr 
+  post_df = cbind(FLUX=as.vector(subset),KIND=rep("Post",length(subset)))  
+  
+  combined_df  = as.data.frame(rbind(post_df,prior_df))
+  
+  combined_df$KIND = factor(combined_df$KIND)
+  combined_df$FLUX = as.numeric(combined_df$FLUX)
+  combined_df = cbind(combined_df,REGION=rep("Global",dim(combined_df)[1]))
+  combined_df$REGION = as.factor(combined_df$REGION)
+  
+  plt_df = rbind(plt_df,combined_df)
+  
   #-- I believe this plot is monthly avg regional flux (in units of PgC/yr) for two years
   g = ggplot(plt_df, aes(x=REGION, y= FLUX, fill=KIND)) +
     geom_boxplot(width=0.5) +   # outlier.shape = NA
+    ylab("PgC/month") +
     scale_fill_manual(values=c("red", "blue","green"))
   
   
-  new_data <- data.frame(REGION =transcom_names, FLUX=c(ret$transcom_fluxes_real_annual_avg ), KIND=rep("Truth",22))
+  new_data <- data.frame(REGION = c(transcom_names,"Global"), FLUX=c(ret$transcom_fluxes_real_annual_avg,
+                                                                     sum(ret$transcom_fluxes_real_annual_avg)), KIND=rep("Truth",23))
   
   g + geom_point(data=new_data, aes(x=REGION, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21) +
+    ylab("PgC/month") +
     theme(axis.text.x = element_text(angle=70,size=15))
   
 }

@@ -1,14 +1,14 @@
 plot_concentrations = function(inversion=NULL,prior_netcdf="~/temp/output/test_output_prior/cosamples.nc4",
                                posterior_netcdf="~/temp/output/test_output_posterior/cosamples.nc4",
                                site_strings=c("brw","mlo","smo","co2_spo_surface-flask","lef","wkt","wbi","nwr","hun"),
-                               ggplotly=FALSE,add_prior_nee=TRUE,add_fossil=TRUE,add_fire=TRUE)
+                               ggplotly=FALSE,add_prior_nee=FALSE,add_fossil=FALSE,add_fire=FALSE)
 {
 library(plotly)
 if(!is.null(inversion))
 {
   ret2 = inversion
   
-  if(add_prior_nee){pr = ret2$prior$outputs$modeled_obs}else{pr = rep(0,length(ret2$prior$outputs$modeled_obs))}
+  if(!add_prior_nee){pr = - ret2$prior$outputs$modeled_obs}else{pr = rep(0,length(ret2$prior$outputs$modeled_obs))}
   if(add_fossil){pr = pr+ fossil_fixed}  else{}
   if(add_fire){pr = pr+ fire_fixed}  else{}
   df = data.frame(ID=rep(obs_catalog$ID,3),
