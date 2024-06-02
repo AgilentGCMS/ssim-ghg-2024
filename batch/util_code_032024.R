@@ -13,8 +13,8 @@ pull_true_transcom_flux = function(prior_flux_file,state_true)
   yy = matrix(state_true,nrow=24,byrow=FALSE)
   #qq = zz[,-1]*yy
   #transcom_fluxes_real = apply(qq,2,sum)  *12/44   *30.5*3600*24*1e3*0.5 * 1e-15 # ~ PgC/yr adjustment to prior
-  qq = zz[,-1]*yy *12/44   *30.5*3600*24*1e3*0.5 * 1e-15 
-  transcom_fluxes_real = apply(qq,2,sum)   # ~ PgC/yr adjustment to prior
+  qq = zz[,-1]*yy *12/44   *30.5*3600*24*1e3 * 1e-15 
+  transcom_fluxes_real = apply(qq,2,sum) * 0.5  # ~ PgC/yr adjustment to prior
   ret = list(monthly=qq,annual_2yr=transcom_fluxes_real)
   return(ret)
 }
@@ -343,8 +343,7 @@ plot_transcom_flux_by_month = function(ret){
 #-- Use this to control plot size
 plot_timeseries_flux_bytranscom = function(ret)
 {
-  options(repr.plot.width=20, repr.plot.height=8)
- 
+
   mat_table = data.frame(NUMBER=1:22,NAME=transcom_names)
   
   plt_df = ret$full_df
@@ -353,11 +352,11 @@ plot_timeseries_flux_bytranscom = function(ret)
   
   #-- Plot global sum 
   subset = ret$prior_tr_monthly_global
-  subset = apply(subset,c(2),sum)     #*30.5*3600*24*1e3*0.5 * 1e-15# ~ gC/yr 
+  subset = apply(subset,c(2),sum)  * 0.5   # 0.5 is to take average over 24 months ~ PgC/yr 
   prior_df = cbind(FLUX=as.vector(subset),KIND=rep("Prior",length(subset)))
   
   subset = ret$post_tr_monthly_global
-  subset = apply(subset,c(2),sum)     #*30.5*3600*24*1e3*0.5 * 1e-15# ~ gC/yr 
+  subset = apply(subset,c(2),sum)  * 0.5   # 0.5 is to take average over 24 months ~ PgC/yr 
   post_df = cbind(FLUX=as.vector(subset),KIND=rep("Post",length(subset)))  
   
   combined_df  = as.data.frame(rbind(post_df,prior_df))
@@ -369,8 +368,35 @@ plot_timeseries_flux_bytranscom = function(ret)
   
   plt_df = rbind(plt_df,combined_df)
   
-  #-- I believe this plot is monthly avg regional flux (in units of PgC/yr) for two years
-  g = ggplot(plt_df, aes(x=REGION, y= FLUX, fill=KIND)) +
+  smp_mean = aggregate(plt_df$FLUX,list(plt_df$KIND,plt_df$REGION),mean)
+  
+  ###############################################
+  #--   FOR REGIONAL/TRANSCOM ESTIMATES     -- -#
+
+  options(repr.plot.width=18, repr.plot.height=8)
+  
+  g = ggplot(plt_df[plt_df$REGION != "Global",], aes(x=REGION, y= FLUX, fill=KIND)) +
+    geom_boxplot(width=0.5) +   # outlier.shape = NA
+    ylab("PgC/month") +
+    scale_fill_manual(values=c("red", "blue","green"))
+  
+  new_data <- data.frame(REGION = c(transcom_names,"Global"), FLUX=c(ret$transcom_fluxes_real_annual_avg,
+                                                                     sum(ret$transcom_fluxes_real_annual_avg)), KIND=rep("Truth",23))
+  
+  h = g + geom_point(data=new_data[new_data$REGION != "Global",], aes(x=REGION, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21) +
+    ylab("PgC/month") +
+    theme(axis.text.x = element_text(angle=70,size=15))
+  
+  print(h)
+  ###############################################
+  
+  
+  ###############################################
+  #--   FOR GLOBAL ESTIMATES     -- -#  
+
+  #options(repr.plot.width=4, repr.plot.height=8)
+  
+  g2 = ggplot(plt_df[plt_df$REGION == "Global",], aes(x=REGION, y= FLUX, fill=KIND)) +
     geom_boxplot(width=0.5) +   # outlier.shape = NA
     ylab("PgC/month") +
     scale_fill_manual(values=c("red", "blue","green"))
@@ -379,9 +405,31 @@ plot_timeseries_flux_bytranscom = function(ret)
   new_data <- data.frame(REGION = c(transcom_names,"Global"), FLUX=c(ret$transcom_fluxes_real_annual_avg,
                                                                      sum(ret$transcom_fluxes_real_annual_avg)), KIND=rep("Truth",23))
   
-  g + geom_point(data=new_data, aes(x=REGION, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21) +
+  h2 = g2 + geom_point(data=new_data[new_data$REGION == "Global",], aes(x=REGION, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21) +
     ylab("PgC/month") +
     theme(axis.text.x = element_text(angle=70,size=15))
+  
+  print(h2)
+  ###############################################    
+  
+  
+  
+  prnt_data = new_data[,c(1,2)]
+  names(prnt_data)[2] = "TRUTH"
+  prnt_data$POST = NA
+  prnt_data$PRIOR = NA  
+  
+  for(i in 1:dim(prnt_data)[1]){
+    prnt_data$POST[i] = smp_mean[smp_mean$Group.1== "Post" & smp_mean$Group.2==prnt_data[i,1] , 3]
+    prnt_data$PRIOR[i] = smp_mean[smp_mean$Group.1== "Prior" & smp_mean$Group.2==prnt_data[i,1] , 3]
+  }
+  
+  prnt_data$TRUTH = round(prnt_data$TRUTH,2)
+  prnt_data$PRIOR = round(prnt_data$PRIOR,2)
+  prnt_data$POST = round(prnt_data$POST,2)
+  
+  print("Sample Means for Regions:")
+  print(prnt_data)
   
 }
 
