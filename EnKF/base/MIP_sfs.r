@@ -1,4 +1,4 @@
-# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/base/MIP_sfs.r: 04 Jun 2024 (Tue) 20:22:33 UTC>
+# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/base/MIP_sfs.r: 04 Jun 2024 (Tue) 22:58:18 UTC>
 
 # This code applies the EnKF measurement update to a truth condition
 # generated from scaling factors derived from OCO-2 v10 MIP models.
@@ -107,15 +107,16 @@ nobs <- dim(H)[1]
 # Note that supplying a Szd argument to the simulate_observed function
 # will result in perturbations being added to the observations.  This
 # would be the place to add biases to obs.
-#obs <- simulate_observed(H=H, x=truth_condition,H_fixed=H_fixed,Szd=Szd.actual)
-obs <- simulate_observed(H=H, x=truth_condition,H_fixed=H_fixed)
+obs <- simulate_observed(H=H, x=truth_condition,H_fixed=H_fixed,Szd=Szd.actual)
+#obs <- simulate_observed(H=H, x=truth_condition,H_fixed=H_fixed)
+obs.all <- obs # save original obs vector to send to invert_clean
 dim(obs) <- c(nobs,1)
 
 
 # Restrict to nobs randomly sampled subset of measurements. Could use
 # obs_catalog or row.names of H to do more systematically-chosen
 # subsets.
-nobs.subset <- 20000
+nobs.subset <- 5000
 
 # lx is a vector of indices into the original 1:nobs 
 lx <- sample(x=1:length(obs),size=nobs.subset) 
@@ -191,38 +192,18 @@ enkf <- enkf_meas_update_loc(x=x.prior, dx=dx.prior,
 # compute sample covariance to represent posterior Sx
 Sx.enkf <- cov(enkf$dx)
 
-# Schuh invert_clean. Beware of different variable names.
-# subset_indicator_obs can be used to subset the measurements (we do
-# not use that). His R_diagonal is assumed to be a s.d. in ppm.
+# Schuh invert_clean. Beware of different variable names.  Various
+# quantities expected to have full original H matrix dimensions, so we
+# create those here.
+#
+# The subset_indicator_obs logical vector can be used to subset the
+# measurements. His R_diagonal is assumed to be a s.d. in ppm.
+#
 subset_indicator_obs=rep(FALSE,dim(H.orig$H)[1])
 subset_indicator_obs[lx.obs.save] <- TRUE
-R_diagonal=rep(0,dim(H.orig$H)[1])
+R_diagonal=rep(0.5,dim(H.orig$H)[1])
 R_diagonal[lx.obs.save] <- sqrt(Szd.assumed)
-y=rep(0,dim(H.orig$H)[1])
-y[lx.obs.save] <- obs
-
-if(FALSE) {
-print(summary(as.vector(H.orig$H)))
-print(dim(H.orig$H))
-
-print(summary(as.vector(sqrt(Szd.assumed))))
-print(length(sqrt(Szd.assumed)))
-
-print(summary(as.vector(Sx.prior)))
-print(dim(Sx.prior))
-
-print(summary(as.vector(y)))
-print(length(y))
-
-print(summary(as.vector(H.orig$H_fixed)))
-print(dim(H.orig$H_fixed))
-
-print(summary(as.vector(subset_indicator_obs)))
-print(length(subset_indicator_obs))
-
-subset_indicator_obs=subset_indicator_obs
-}
-#debug(invert_clean)
+y=obs.all
 
 ic = invert_clean(H=H.orig$H,R_diagonal=R_diagonal,
                   P_0=Sx.prior,y=y,H_bgd=H.orig$H_fixed,
