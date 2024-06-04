@@ -377,14 +377,14 @@ plot_timeseries_flux_bytranscom = function(ret)
   
   g = ggplot(plt_df[plt_df$REGION != "Global",], aes(x=REGION, y= FLUX, fill=KIND)) +
     geom_boxplot(width=0.5) +   # outlier.shape = NA
-    ylab("PgC/month") +
+    ylab("PgC/year") +
     scale_fill_manual(values=c("red", "blue","green"))
   
   new_data <- data.frame(REGION = c(transcom_names,"Global"), FLUX=c(ret$transcom_fluxes_real_annual_avg,
                                                                      sum(ret$transcom_fluxes_real_annual_avg)), KIND=rep("Truth",23))
   
   h = g + geom_point(data=new_data[new_data$REGION != "Global",], aes(x=REGION, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21) +
-    ylab("PgC/month") +
+    ylab("PgC/year") +
     theme(axis.text.x = element_text(angle=70,size=15))
   
   print(h)
