@@ -580,3 +580,15 @@ transcom_names = c("North American Boreal    ", "North American Temperate ",
                    "South Atlantic Temperate ", "Southern Ocean           ",
                    "Indian Tropical          ", "South Indian Temperate   ")
 
+parse.obspack_id <- function(x) {
+  info <- data.frame(t(matrix(as.vector(unlist(strsplit(x,'~'))),nrow=3)),stringsAsFactors=FALSE)
+  names(info) <- c("obspack_name","dataset_name","obspack_number")
+  this.tempval <-        data.frame(t(matrix(as.vector(unlist(strsplit(info$dataset_name,"_"))),nrow=5)),stringsAsFactors=FALSE)
+  info$species <- this.tempval[,1]
+  info$site <- this.tempval[,2]
+  info$project <- this.tempval[,3]
+  info$labcode <- this.tempval[,4]
+  info$selection <- this.tempval[,5]
+  return(info)
+} 
+

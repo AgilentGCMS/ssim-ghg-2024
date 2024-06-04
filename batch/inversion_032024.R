@@ -3,7 +3,7 @@
 #################################################################################################
 
 invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL, 
-                        DOF=FALSE, output_Kalman_Gain=FALSE, output_Infl_Matrix=FALSE)
+                        DOF=FALSE, output_Kalman_Gain=FALSE, output_Infl_Matrix=FALSE,force=FALSE)
 { 
   # H=jacob;R_diagonal=R_diagonal_in;P_0=sigma;y=y_in;H_bgd=jacob_bgd
 
@@ -13,7 +13,14 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL,
     
   #-- capture full sensitivity matrix info before subsetting
   if(is.null(subset_indicator_obs)){subset_indicator_obs=rep(TRUE,length(R_diagonal))}
-  
+
+
+  #-- check for too large of optimization as it will be die on GHGHub (30GB limit)
+  if(!force){
+     if(sum(subset_indicator_obs) >= 0.5*(dim(H)[1])) {stop(paste("Please limit observations to",
+                                                            0.5*(dim(H)[1]),"observations"))}
+      }
+    
   obs_id = dimnames(H)[[1]]
   obs_len_init = dim(H)[1]
   assim_T_F=rep(0,dim(H)[1])
@@ -81,6 +88,7 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL,
   print("...deriving posterior mean state, X_hat")
   x_hat =  - P %*% computation_4
 
+  rm(HR2)
 ################################
 #-- CORE INVERSION CODE ABOVE
 ################################
@@ -98,9 +106,7 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL,
   #---  Digression to calc S, the influence/sensivity matrix, DOF, and chi squares
 
   if(DOF){
-    S1 = R2_diagonal_inv * (H)
-    S2 = t(P%*%t(H))
-    S3 = S1*S2
+    S3 = (R2_diagonal_inv * (H) ) * t(P%*%t(H))
     trS = apply(S3,1,sum)
     sum_trS = sum(trS)
     sum_trB = dim(P)[1] - sum(trS)
@@ -120,7 +126,7 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL,
    }else{K = NULL}
   
   #-- Clean up objects
-  rm(HR2)
+  #rm(HR2)
   rm(computation_4)
   rm(computation_3)
 
