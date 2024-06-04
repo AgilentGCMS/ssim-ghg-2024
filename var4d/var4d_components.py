@@ -530,8 +530,44 @@ class Var4D_Components(RunSpecs):
 
         return obs_err
 
-    def add_obs_bias(self, **kwargs):
-        pass
+    def add_obs_bias(self, bias_ppm, **kwargs):
+        with Dataset(self.obs_nc, 'r') as fid:
+            nobs = len(fid.dimensions['nobs'])
+            # change oco2_idx and is_idx to be vectors of boolean (full length)
+            oco2_idx = np.zeros(nobs, bool)
+            oco2_idx[fid.variables['OCO2_idx'][:]] = True
+            is_idx = np.zeros(nobs, bool)
+            is_idx[fid.variables['IS_idx'][:]] = True
+            obs_lat = fid.variables['latitude'][:]
+            obs_lon = fid.variables['longitude'][:]
+            time_origin = datetime.strptime(fid.variables['time'].units, 'Minutes since %Y-%m-%d %H:%Mz')
+            obs_times = [time_origin + timedelta(minutes=int(m)) for m in fid.variables['time'][:]]
+
+        # We define a few types of biases, students are encouraged to try to add additional bias types
+        obs_bias = np.zeros_like(self.obs_vec)
+        bias_idx = np.ones(nobs, bool) # all obs are biased by default
+
+        if 'lat_min' in kwargs:
+            bias_idx = np.logical_and(bias_idx, obs_lat >= kwargs['lat_min'])
+        if 'lat_max' in kwargs:
+            bias_idx = np.logical_and(bias_idx, obs_lat <= kwargs['lat_max'])
+        if 'lon_min' in kwargs:
+            bias_idx = np.logical_and(bias_idx, obs_lon >= kwargs['lon_min'])
+        if 'lon_max' in kwargs:
+            bias_idx = np.logical_and(bias_idx, obs_lon <= kwargs['lon_max'])
+        if 'platform' in kwargs:
+            if kwargs['platform'].lower() == 'is':
+                bias_idx = np.logical_and(bias_idx, is_idx)
+            if kwargs['platform'].lower() == 'oco2':
+                bias_idx = np.logical_and(bias_idx, oco2_idx)
+        if 'months' in kwargs:
+            month_idx = np.array([d.month in kwargs['months'] for d in obs_times])
+            bias_idx = np.logical_and(bias_idx, month_idx)
+
+        obs_bias[bias_idx] = obs_bias[bias_idx] + bias_ppm
+        print('Added %.1f ppm bias to %i out of %i obs'%(bias_ppm, bias_idx.sum(), len(bias_idx)))
+
+        self.obs_vec = self.obs_vec + obs_bias
 
     def setup_obs(self, true_flux='CT2022', trans_model='GC', obs_to_assim={}):
         if true_flux.lower() == 'ct2022':
@@ -688,6 +724,11 @@ class Var4D_Components(RunSpecs):
             v[:] = res.jac
             setattr(v, 'comment', 'Final Jacobian in preconditioned space')
 
+            v = fid.createVariable('prior_cov', np.float64, ('n_state','n_state'), **comp_dict)
+            v[:] = self.prior_cov
+            setattr(v, 'comment', 'Prior covariance')
+            setattr(v, 'units', '(Kg CO2/m^2/s)^2')
+
             if 'hess_inv' in dir(res):
                 v = fid.createVariable('hess_inv', np.float64, ('n_state','n_state'), **comp_dict)
                 if isinstance(res.hess_inv, optimize.LbfgsInvHessProduct):
@@ -695,6 +736,12 @@ class Var4D_Components(RunSpecs):
                 else:
                     v[:] = res.hess_inv
                 setattr(v, 'comment', 'Approximate inverse Hessian in preconditioned space')
+
+                v = fid.createVariable('poste_cov', np.float64, ('n_state','n_state'), **comp_dict)
+                inv_hess_preco = fid.variables['hess_inv'][:]
+                v[:] = np.matmul(self.L, np.matmul(inv_hess_preco, self.L.T))
+                setattr(v, 'comment', 'Approximate posterior covariance calculated from inverse hessian')
+                setattr(v, 'units', '(Kg CO2/m^2/s)^2')
 
             if self.store_intermediate_states:
                 fid.createDimension('iterations', res.nit)
