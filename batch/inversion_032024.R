@@ -88,7 +88,6 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL,
   print("...deriving posterior mean state, X_hat")
   x_hat =  - P %*% computation_4
 
-  rm(HR2)
 ################################
 #-- CORE INVERSION CODE ABOVE
 ################################
@@ -96,7 +95,18 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL,
 ################################
 #-- DIAGNOSTICS BELOW
 ################################
-    
+  
+  if(output_Kalman_Gain){
+    prod1 = P_0 %*% t(H) 
+    sum1 = t(prod1) * (R2_diagonal_inv)
+    sum1 = t(sum1)
+    sum2 = - prod1 %*% t(HR2) %*% P %*% HR2
+    K = sum1 + sum2
+    rm(prod1);rm(sum1);rm(sum2);
+  }else{K = NULL}
+  
+  rm(HR2)
+  
   if(output_Infl_Matrix){
     P_tH = P %*% t(H)
     infl_matrix = colSums(t(H) * P_tH) * R2_diagonal_inv
@@ -116,14 +126,7 @@ invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL,
 
   #-------------------------------------------------------------
     
-  if(output_Kalman_Gain){
-    prod1 = P_0 %*% t(H) 
-    sum1 = t(prod1) * (R2_diagonal_inv)
-    sum1 = t(sum1)
-    sum2 = - prod1 %*% t(HR2) %*% P %*% HR2
-    K = sum1 + sum2
-    rm(prod1);rm(sum1);rm(sum2);
-   }else{K = NULL}
+
   
   #-- Clean up objects
   #rm(HR2)
