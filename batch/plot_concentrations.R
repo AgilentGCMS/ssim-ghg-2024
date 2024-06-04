@@ -3,7 +3,6 @@ plot_concentrations = function(inversion=NULL,prior_netcdf="~/temp/output/test_o
                                site_strings=c("brw","mlo","smo","co2_spo_surface-flask","lef","wkt","wbi","nwr","hun"),
                                ggplotly=FALSE,add_prior_nee=FALSE,add_fossil=FALSE,add_fire=FALSE)
 {
-library(plotly)
 if(!is.null(inversion))
 {
   ret2 = inversion

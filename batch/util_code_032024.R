@@ -377,14 +377,14 @@ plot_timeseries_flux_bytranscom = function(ret)
   
   g = ggplot(plt_df[plt_df$REGION != "Global",], aes(x=REGION, y= FLUX, fill=KIND)) +
     geom_boxplot(width=0.5) +   # outlier.shape = NA
-    ylab("PgC/month") +
+    ylab("PgC/year") +
     scale_fill_manual(values=c("red", "blue","green"))
   
   new_data <- data.frame(REGION = c(transcom_names,"Global"), FLUX=c(ret$transcom_fluxes_real_annual_avg,
                                                                      sum(ret$transcom_fluxes_real_annual_avg)), KIND=rep("Truth",23))
   
   h = g + geom_point(data=new_data[new_data$REGION != "Global",], aes(x=REGION, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21) +
-    ylab("PgC/month") +
+    ylab("PgC/year") +
     theme(axis.text.x = element_text(angle=70,size=15))
   
   print(h)
@@ -579,4 +579,16 @@ transcom_names = c("North American Boreal    ", "North American Temperate ",
                    "North Atlantic Temperate ", "Atlantic Tropical        ",
                    "South Atlantic Temperate ", "Southern Ocean           ",
                    "Indian Tropical          ", "South Indian Temperate   ")
+
+parse.obspack_id <- function(x) {
+  info <- data.frame(t(matrix(as.vector(unlist(strsplit(x,'~'))),nrow=3)),stringsAsFactors=FALSE)
+  names(info) <- c("obspack_name","dataset_name","obspack_number")
+  this.tempval <-        data.frame(t(matrix(as.vector(unlist(strsplit(info$dataset_name,"_"))),nrow=5)),stringsAsFactors=FALSE)
+  info$species <- this.tempval[,1]
+  info$site <- this.tempval[,2]
+  info$project <- this.tempval[,3]
+  info$labcode <- this.tempval[,4]
+  info$selection <- this.tempval[,5]
+  return(info)
+} 
 
