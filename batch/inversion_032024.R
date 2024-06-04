@@ -3,7 +3,8 @@
 #################################################################################################
 
 invert_clean = function(H,R_diagonal,P_0,y,H_bgd,subset_indicator_obs=NULL, 
-                        DOF=FALSE, output_Kalman_Gain=FALSE, output_Infl_Matrix=FALSE,force=FALSE)
+                        DOF=FALSE, output_Kalman_Gain=FALSE, output_Infl_Matrix=FALSE,force=FALSE,
+                       state_vector_true=state_vector_true)
 { 
   # H=jacob;R_diagonal=R_diagonal_in;P_0=sigma;y=y_in;H_bgd=jacob_bgd
 
