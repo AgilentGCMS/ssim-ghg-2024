@@ -246,7 +246,8 @@ class Transport(RunSpecs):
             'TM5': None,
             }
         self.background = {
-            'GC': os.path.join(self.data_root, 'jacobians/jacob_bgd_021624.nc'), # probably not correct
+            # 'GC': os.path.join(self.data_root, 'jacobians/jacob_bgd_021624.nc'), # probably not correct
+            'GC': self.bg_nc,
             'TM5': None,
             }
         self.Jacobian = {}
