@@ -34,8 +34,8 @@ class Paths(object):
         self.obs_rda = os.path.join(self.data_root, 'obs/obs_catalog_041724_unit_pulse_hour_timestamp_witherrors.rda')
         self.obs_nc = os.path.join(self.data_root, 'obs/obs_catalog_041724_unit_pulse_hour_timestamp_witherrors.nc')
         self.obs_by_dataset = os.path.join(self.data_root, 'obs/obs_by_dataset.pickle')
-        self.bg_rda = os.path.join(self.data_root, 'jacobians/jacob_bgd_021624.rda')
-        self.bg_nc = os.path.join(self.data_root, 'jacobians/jacob_bgd_021624.nc')
+        self.bg_rda = os.path.join(self.data_root, 'jacobians/jacob_bgd_060524.rda')
+        self.bg_nc = os.path.join(self.data_root, 'jacobians/jacob_bgd_060524.nc')
 
         self.region_aggregates = {
             'North America': ['North American Boreal', 'North American Temperate'],
