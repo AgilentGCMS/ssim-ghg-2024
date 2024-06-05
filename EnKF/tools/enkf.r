@@ -472,7 +472,8 @@ plot.flux.timeseries <- function(ests,
   # The input "ests" is a list, each element of which is a state
   # estimate (i.e., a list itself, containing x and Sx). The "truth"
   # element should only have x, not Sx.
-  
+    require(plotrix)
+    
   nests <- length(ests)
 
   if(is.null(tc.priors)) {
