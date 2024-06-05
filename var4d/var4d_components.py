@@ -250,6 +250,7 @@ class Transport(RunSpecs):
             'TM5': None,
             }
         self.Jacobian = {}
+        self.background_ppm = 400.0 # arbitrary choice
 
     def transport(self, state_vector, model='GC', add_bg=True):
         if model not in self.Jacobian:
@@ -261,7 +262,7 @@ class Transport(RunSpecs):
             with Timer("Added background in ", print=self.verbose):
                 with Dataset(self.background[model], 'r') as fid:
                     bg = fid.variables['BG'][:]
-                bg = bg.sum(axis=1)
+                bg = bg[:,2:4].sum(axis=1) + self.background_ppm
         else:
             bg = 0.0
 
@@ -438,7 +439,7 @@ class Construct_Synthetic_Obs(RunSpecs):
             raise RuntimeError('Unknown flux type %s'%self.true_flux)
 
         t = Transport()
-        obs = t.transport(state_vec, model=self.transport, add_bg=False)
+        obs = t.transport(state_vec, model=self.transport, add_bg=True)
 
         with Dataset(self.synth_obs_file, 'w') as fid:
             fid.createDimension('observations', len(obs))
@@ -577,7 +578,7 @@ class Var4D_Components(RunSpecs):
         else:
             raise RuntimeError('Unknown true flux %s specified'%true_flux)
 
-        self.obs_vec = self.trans_op.transport(state_vec, model=trans_model, add_bg=False)
+        self.obs_vec = self.trans_op.transport(state_vec, model=trans_model, add_bg=True)
         self.obs_err = self.setup_obs_errors(**obs_to_assim)
         self.true_flux = state_vec
 
@@ -901,7 +902,7 @@ class Var4D_Components(RunSpecs):
     def forward_transport(self, flux_vector):
         if 'fwd' in self.progress_bars:
             self.progress_bars['fwd'].update()
-        return self.trans_op.transport(flux_vector, model='GC', add_bg=False)
+        return self.trans_op.transport(flux_vector, model='GC', add_bg=True)
 
     def calculate_mismatch(self, model_obs):
         return model_obs - self.obs_vec
