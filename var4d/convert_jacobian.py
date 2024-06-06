@@ -11,11 +11,11 @@ class Paths(object):
         # define the order in which paths will be searched for input data
         input_folder_order = [
             os.path.join(os.environ['HOME'], 'shared/ssim-ghg-data/inversion_examples'), # on GHG Center's JupyterHub
-            os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/2024/SSIM-GHG'), # Sourish's laptop
+            os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/ssim-ghg-data/2024/input'), # Sourish's laptop
             ]
         output_folder_order = [ # for each input folder above, define an appropriate output folder
             os.path.join(os.environ['HOME'], 'inversion_output'), # GHG Center's JupyterHub
-            os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/2024/output'), # Sourish's laptop
+            os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/ssim-ghg-data/2024/output'), # Sourish's laptop
             ]
         font_order = ['Inconsolata', 'Calibri']
         for folder_i, folder_o, ff in zip(input_folder_order, output_folder_order, font_order):
