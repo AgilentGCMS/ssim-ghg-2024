@@ -1,10 +1,11 @@
 import numpy as np
 from netCDF4 import Dataset
-import os, tqdm, pickle, time, numbers, calendar
+import os, pickle, time, numbers, calendar
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from convert_jacobian import Paths
 from scipy import optimize
+from tqdm.auto import tqdm
 
 class Timer(object):
     indent_levels = [] # data to be shared across all instances to keep track of indentation level
@@ -200,7 +201,7 @@ class Fluxes(RunSpecs):
             cur_month += relativedelta(months=1)
 
         state_vec = 0.0
-        for year, month in tqdm.tqdm(ym_tuples, desc='Converting SiB4 to state vector'):
+        for year, month in tqdm(ym_tuples, desc='Converting SiB4 to state vector'):
             flux_nee = self.read_sib4_flux(year, month, 'I2b')
             flux_oce = self.read_sib4_flux(year, month, 'Fnetoce')
             if smush_regions:
@@ -222,7 +223,7 @@ class Fluxes(RunSpecs):
             cur_month += relativedelta(months=1)
 
         state_vec = 0.0
-        for year, month in tqdm.tqdm(ym_tuples, desc='Converting CT2022 to state vector'):
+        for year, month in tqdm(ym_tuples, desc='Converting CT2022 to state vector'):
             flux_nee = self.read_ct2022_flux(year, month, 'bio_flux_opt')
             flux_oce = self.read_ct2022_flux(year, month, 'ocn_flux_opt')
             if smush_regions:
@@ -263,7 +264,7 @@ class Transport(RunSpecs):
             with Timer("Added background in ", print=self.verbose):
                 with Dataset(self.background[model], 'r') as fid:
                     bg = fid.variables['BG'][:]
-                bg = bg[:,2:4].sum(axis=1) + self.background_ppm
+                bg = bg[:,1:3].sum(axis=1) + self.background_ppm
         else:
             bg = 0.0
 
@@ -803,11 +804,12 @@ class Var4D_Components(RunSpecs):
 
         # Print number of function and adjoint evaluations
         if not self.verbose:
-            self.progress_bars['cost'] = tqdm.tqdm(desc='Cost function evaluation'.rjust(30), total=float('inf'), unit='')
-            self.progress_bars['grad'] = tqdm.tqdm(desc='Gradient evaluation'.rjust(30), total=float('inf'), unit='')
-            self.progress_bars['fwd'] = tqdm.tqdm(desc='Forward transport'.rjust(30), total=float('inf'), unit='')
-            self.progress_bars['adj'] = tqdm.tqdm(desc='Adjoint transport'.rjust(30), total=float('inf'), unit='')
-            self.progress_bars['hessp'] = tqdm.tqdm(desc='Hessian product evaluation'.rjust(30), total=float('inf'), unit='')
+            common_dict = dict(total=float('inf'), unit='it', bar_format='{l_bar}{bar}| {n_fmt} [{elapsed}, ' '{rate_fmt}{postfix}]')
+            self.progress_bars['cost']  = tqdm(desc='Cost function evaluation', **common_dict)
+            self.progress_bars['grad']  = tqdm(desc='Gradient evaluation', **common_dict)
+            self.progress_bars['fwd']   = tqdm(desc='Forward transport', **common_dict)
+            self.progress_bars['adj']   = tqdm(desc='Adjoint transport', **common_dict)
+            self.progress_bars['hessp'] = tqdm(desc='Hessian product evaluation', **common_dict)
 
         self.optim_diags = { # after optimization, show the progress of the cost function and gradient norm
             'iter_grad': 0,
@@ -846,6 +848,8 @@ class Var4D_Components(RunSpecs):
             for step, pbar in self.progress_bars.items():
                 pbar.close()
             self.progress_bars.pop(step)
+
+        print('End of 4DVAR loop')
 
     def gradient_test(self, init_cond, starting_alpha=1.0, alpha_step=0.1, max_iter=10, tolerance=1.0E-7):
         assert init_cond.lower() in ['ones', 'random'], 'Invalid init_cond specified'
