@@ -26,7 +26,7 @@ generate_transcom_flux_ensemble_from_inversion=function(inv_object=ret2,
   x_hat_matrix_v = as.vector(x_hat_matrix)
   transcom_NEE_5x4_v = as.vector(transcom_NEE_5x4)
   
-  transcom_NEE_5x4_reals = rmvnorm(n=samples,mean=transcom_NEE_5x4_v*x_hat_matrix_v,sigma = (diag(transcom_NEE_5x4_v) %*% ret2$posterior$P %*% diag(transcom_NEE_5x4_v))) %>% aperm(c(2,1))
+  transcom_NEE_5x4_reals = rmvnorm(n=samples,mean=transcom_NEE_5x4_v*x_hat_matrix_v,sigma = (diag(transcom_NEE_5x4_v) %*% ret2$posterior$Sx_post %*% diag(transcom_NEE_5x4_v))) %>% aperm(c(2,1))
   transcom_NEE_5x4_reals = aaply(transcom_NEE_5x4_reals,c(2),.fun=function(x){array(x,dim=c(24,22))}) %>% aperm(c(2,1,3))
   
   post_tr_monthly = transcom_NEE_5x4_reals     *12/44    *30.5*3600*24*1e3 * 1e-15
@@ -35,7 +35,7 @@ generate_transcom_flux_ensemble_from_inversion=function(inv_object=ret2,
   post_tr_annual = apply(post_tr_monthly,c(2,3),sum) * 0.5 # ~ PgC/yr
   post_df = cbind(FLUX=as.vector(t(post_tr_annual)),KIND=rep("Post",length(post_tr_annual)),REGION=rep(1:22,dim(post_tr_annual)[1]))
   
-  transcom_NEE_5x4_reals = rmvnorm(n=samples,mean=rep(0,length(x_hat_matrix_v)),sigma = (diag(transcom_NEE_5x4_v) %*% ret2$prior$P %*% diag(transcom_NEE_5x4_v))) %>% aperm(c(2,1))
+  transcom_NEE_5x4_reals = rmvnorm(n=samples,mean=rep(0,length(x_hat_matrix_v)),sigma = (diag(transcom_NEE_5x4_v) %*% ret2$prior$Sx %*% diag(transcom_NEE_5x4_v))) %>% aperm(c(2,1))
   transcom_NEE_5x4_reals = aaply(transcom_NEE_5x4_reals,c(2),.fun=function(x){array(x,dim=c(24,22))}) %>% aperm(c(2,1,3))
   
   prior_tr_monthly = transcom_NEE_5x4_reals       *  12/44 *30.5*3600*24*1e3* 1e-15
