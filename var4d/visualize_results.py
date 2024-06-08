@@ -314,23 +314,36 @@ class Visualize_Fluxes(Visualize):
                         poste_flux += fid.variables['poste_flux'][i_reg] * region_areas[i_reg] * flux_conversion_factor # PgC/year
                         true_flux  += fid.variables['true_flux'][i_reg]  * region_areas[i_reg] * flux_conversion_factor # PgC/year
 
-                if plot_errs and self.project in self.error_dirs:
-                    error_file = os.path.join(self.output_root, self.error_dirs[self.project], 'optim_summary_spread.nc')
-                    with Dataset(error_file, 'r') as e_fid:
-                        if region.lower() in region_names_in_file:
-                            prior_ensemble = e_fid.variables['prior_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
-                            poste_ensemble = e_fid.variables['poste_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
-                        elif region in self.region_aggregates:
-                            prior_ensemble = 0.0
-                            poste_ensemble = 0.0
-                            for i_reg in region_indices:
-                                prior_ensemble += e_fid.variables['prior_flux'][:,i_reg] * region_areas[i_reg] * flux_conversion_factor
-                                poste_ensemble += e_fid.variables['poste_flux'][:,i_reg] * region_areas[i_reg] * flux_conversion_factor
+                if plot_errs:
+                    if err_source.lower() == 'mc' and self.project in self.error_dirs:
+                        error_file = os.path.join(self.output_root, self.error_dirs[self.project], 'optim_summary_spread.nc')
+                        with Dataset(error_file, 'r') as e_fid:
+                            if region.lower() in region_names_in_file:
+                                prior_ensemble = e_fid.variables['prior_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
+                                poste_ensemble = e_fid.variables['poste_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
+                            elif region in self.region_aggregates:
+                                prior_ensemble = 0.0
+                                poste_ensemble = 0.0
+                                for i_reg in region_indices:
+                                    prior_ensemble += e_fid.variables['prior_flux'][:,i_reg] * region_areas[i_reg] * flux_conversion_factor
+                                    poste_ensemble += e_fid.variables['poste_flux'][:,i_reg] * region_areas[i_reg] * flux_conversion_factor
 
-                    prior_err = np.std(prior_ensemble, axis=0)
-                    poste_err = np.std(poste_ensemble, axis=0)
-                else:
-                    plot_errs = False
+                        prior_err = np.std(prior_ensemble, axis=0)
+                        poste_err = np.std(poste_ensemble, axis=0)
+
+                    elif err_source.lower().startswith('hess'):
+                        if region.lower() in region_names_in_file:
+                            region_list = [region]
+                        elif region in self.region_aggregates:
+                            region_list = self.region_aggregates[region]
+                        prior_err = np.zeros(len(month_times), dtype=np.float64)
+                        poste_err = np.zeros(len(month_times), dtype=np.float64)
+                        for i,m in enumerate(tqdm(month_times, desc='Calculating errors from approximate inverse Hessian')):
+                            prior_err[i] = self.calculate_error_on_aggregate(region_list, m, 'prior')
+                            poste_err[i] = self.calculate_error_on_aggregate(region_list, m, 'poste')
+
+                    else:
+                        plot_errs = False
 
                 time_vals = np.arange(len(month_times))
 
@@ -351,13 +364,19 @@ class Visualize_Fluxes(Visualize):
                 tot_prior = np.average(prior_flux[indices_for_total], weights=month_lengths)
                 tot_poste = np.average(poste_flux[indices_for_total], weights=month_lengths)
                 if plot_errs: # calculate error on the totals
-                    prior_ensemble_total = np.zeros(prior_ensemble.shape[0], dtype=prior_ensemble.dtype)
-                    poste_ensemble_total = np.zeros(poste_ensemble.shape[0], dtype=poste_ensemble.dtype)
-                    for i_en in range(prior_ensemble.shape[0]):
-                        prior_ensemble_total[i_en] = np.average(prior_ensemble[i_en][indices_for_total], weights=month_lengths)
-                        poste_ensemble_total[i_en] = np.average(poste_ensemble[i_en][indices_for_total], weights=month_lengths)
-                    tot_prior_err = np.std(prior_ensemble_total)
-                    tot_poste_err = np.std(poste_ensemble_total)
+                    if err_source.lower() == 'mc' and self.project in self.error_dirs:
+                        prior_ensemble_total = np.zeros(prior_ensemble.shape[0], dtype=prior_ensemble.dtype)
+                        poste_ensemble_total = np.zeros(poste_ensemble.shape[0], dtype=poste_ensemble.dtype)
+                        for i_en in range(prior_ensemble.shape[0]):
+                            prior_ensemble_total[i_en] = np.average(prior_ensemble[i_en][indices_for_total], weights=month_lengths)
+                            poste_ensemble_total[i_en] = np.average(poste_ensemble[i_en][indices_for_total], weights=month_lengths)
+                        tot_prior_err = np.std(prior_ensemble_total)
+                        tot_poste_err = np.std(poste_ensemble_total)
+                    elif err_source.lower().startswith('hess'):
+                        month_list = [datetime(2015,m,1) for m in range(1,13)]
+                        tot_prior_err = self.calculate_error_on_aggregate(region_list, month_list, 'prior')
+                        tot_poste_err = self.calculate_error_on_aggregate(region_list, month_list, 'poste')
+
                     plot_ax.errorbar(time_vals[-1]+0.8, tot_prior, yerr=tot_prior_err,
                         fmt='none', ecolor=self.plot_styles['apri']['mec'], elinewidth=1, capsize=3)
                     plot_ax.errorbar(time_vals[-1]+1.2, tot_poste, yerr=tot_poste_err,
