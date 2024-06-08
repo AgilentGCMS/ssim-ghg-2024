@@ -1,11 +1,12 @@
 from netCDF4 import Dataset
 from matplotlib import pyplot as plt
-import os, copy, calendar, glob, tqdm
+import os, copy, calendar, glob
 from datetime import datetime, timedelta
 from convert_jacobian import Paths
 import numpy as np
 from collections.abc import Iterable
 from matplotlib.ticker import MaxNLocator
+from tqdm.auto import tqdm
 
 class Visualize(Paths):
 
@@ -47,7 +48,7 @@ class Monte_Carlo_avg(Paths):
             output_file = os.path.join(self.summary_dir, 'timeseries_%s.nc'%site)
             comp_dict = dict(zlib=True, shuffle=True, complevel=5)
             with Dataset(output_file, 'w') as ofid:
-                for i, dir_name in enumerate(tqdm.tqdm(self.output_dirs, desc='Summarizing observations for %s'%site)):
+                for i, dir_name in enumerate(tqdm(self.output_dirs, desc='Summarizing observations for %s'%site)):
                     input_fname = os.path.join(dir_name, 'timeseries_%s.nc'%site)
                     with Dataset(input_fname, 'r') as ifid:
                         if i == 0:
@@ -84,7 +85,7 @@ class Monte_Carlo_avg(Paths):
 
         comp_dict = dict(zlib=True, shuffle=True, complevel=5)
         with Dataset(output_file, 'w') as ofid:
-            for i, dir_name in enumerate(tqdm.tqdm(self.output_dirs, desc='Summarizing emissions')):
+            for i, dir_name in enumerate(tqdm(self.output_dirs, desc='Summarizing emissions')):
                 fname = os.path.join(dir_name, 'optim_summary.nc')
                 with Dataset(fname, 'r') as ifid:
                     if i == 0:
@@ -176,7 +177,7 @@ class Monte_Carlo_avg(Paths):
         corrcoeffs_apos = np.zeros((n_reg, n_reg), dtype=np.float64)
 
         num_evals = n_reg*(n_reg-1)//2
-        with tqdm.tqdm(total=num_evals, desc='Calculating correlation coefficients') as pbar:
+        with tqdm(total=num_evals, desc='Calculating correlation coefficients') as pbar:
             for ireg_1, region_1 in enumerate(all_regions):
                 for ireg_2 in range(ireg_1+1):
                     region_2 = all_regions[ireg_2]
@@ -305,17 +306,27 @@ class Visualize_Fluxes(Visualize):
                     prior_flux = 0.0
                     poste_flux = 0.0
                     true_flux = 0.0
+                    region_indices = []
                     for reg_comp in region_components:
-                        region_index = region_names_in_file.index(reg_comp)
-                        prior_flux += fid.variables['prior_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
-                        poste_flux += fid.variables['poste_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
-                        true_flux  += fid.variables['true_flux'][region_index]  * region_areas[region_index] * flux_conversion_factor # PgC/year
+                        i_reg = region_names_in_file.index(reg_comp)
+                        region_indices.append(i_reg)
+                        prior_flux += fid.variables['prior_flux'][i_reg] * region_areas[i_reg] * flux_conversion_factor # PgC/year
+                        poste_flux += fid.variables['poste_flux'][i_reg] * region_areas[i_reg] * flux_conversion_factor # PgC/year
+                        true_flux  += fid.variables['true_flux'][i_reg]  * region_areas[i_reg] * flux_conversion_factor # PgC/year
 
-                if plot_errs and self.project in self.error_dirs: # TODO: add errors on region aggregates
+                if plot_errs and self.project in self.error_dirs:
                     error_file = os.path.join(self.output_root, self.error_dirs[self.project], 'optim_summary_spread.nc')
                     with Dataset(error_file, 'r') as e_fid:
-                        prior_ensemble = e_fid.variables['prior_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
-                        poste_ensemble = e_fid.variables['poste_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
+                        if region.lower() in region_names_in_file:
+                            prior_ensemble = e_fid.variables['prior_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
+                            poste_ensemble = e_fid.variables['poste_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
+                        elif region in self.region_aggregates:
+                            prior_ensemble = 0.0
+                            poste_ensemble = 0.0
+                            for i_reg in region_indices:
+                                prior_ensemble += e_fid.variables['prior_flux'][:,i_reg] * region_areas[i_reg] * flux_conversion_factor
+                                poste_ensemble += e_fid.variables['poste_flux'][:,i_reg] * region_areas[i_reg] * flux_conversion_factor
+
                     prior_err = np.std(prior_ensemble, axis=0)
                     poste_err = np.std(poste_ensemble, axis=0)
                 else:
@@ -388,6 +399,7 @@ class Visualize_Fluxes(Visualize):
                 diff_ax.yaxis.set_major_locator(MaxNLocator(integer=True))
 
                 plot_ax.set_xticklabels(xtick_labels, **self.tick_font_property)
+                diff_ax.set_xticklabels([])
                 plt.setp(plot_ax.get_yticklabels(), **self.tick_font_property)
                 plt.setp(diff_ax.get_yticklabels(), **self.tick_font_property)
 
