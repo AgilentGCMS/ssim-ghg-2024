@@ -4,6 +4,7 @@ import os, copy, calendar, glob, tqdm
 from datetime import datetime, timedelta
 from convert_jacobian import Paths
 import numpy as np
+from collections.abc import Iterable
 from matplotlib.ticker import MaxNLocator
 
 class Visualize(Paths):
@@ -223,7 +224,44 @@ class Visualize_Fluxes(Visualize):
     def __init__(self, project):
         super(Visualize_Fluxes, self).__init__(project)
 
-    def plot_region(self, region_names, plot_errs=False):
+    def calculate_error_on_aggregate(self, region_list, month_list, stage):
+        if isinstance(region_list, str):
+            region_list = [region_list]
+        if not isinstance(month_list, Iterable): # month_list has to be a list of datetime objects
+            month_list = [month_list]
+
+        result_file = os.path.join(self.output_dir, 'optim_summary.nc')
+        with Dataset(result_file, 'r') as fid:
+            all_months = [datetime(*d) for d in fid.variables['time_coordinate'][:]]
+            all_regions = [s.lower() for s in fid.variables['region_areas'].region_names.split(',')]
+            region_areas = fid.variables['region_areas'][:]
+
+            region_indices = [all_regions.index(reg.lower()) for reg in region_list]
+            time_indices = [all_months.index(d) for d in month_list]
+            month_lengths = [86400*calendar.monthrange(d.year,d.month)[1] for d in all_months] # seconds
+
+            cov_matrix = fid.variables['%s_cov'%stage][:] # n_state x n_state, (Kg CO2/m^2/s)^2
+
+            n_state = len(fid.dimensions['n_state'])
+            n_region = len(fid.dimensions['n_region'])
+            n_month = len(fid.dimensions['n_month'])
+
+        # what is the total length of all the months to be summed up?
+        total_seconds_in_period = np.array(month_lengths)[np.array(time_indices)].sum()
+        flux_conversion_factor = (12.01/44.01) * 1.0E-12 * (365.25 * 86400) / total_seconds_in_period # from Kg CO2/s to Pg C/year
+
+        # the state vector ordering is region first (slowly varying), then month (fast varying)
+        coeffs = np.zeros(n_state, dtype=np.float64)
+        for i_reg in region_indices:
+            for i_t in time_indices:
+                i_state = i_reg*n_month + i_t
+                coeffs[i_state] = region_areas[i_reg] * month_lengths[i_t] * flux_conversion_factor # convert from Kg CO2/m^2/s to PgC/region/year
+
+        total_err = np.sqrt(np.dot(coeffs, np.matmul(cov_matrix, coeffs))) # PgC/year for this region
+
+        return total_err
+
+    def plot_region(self, region_names, plot_errs=False, err_source='MC'):
         if isinstance(region_names, str):
             region_names = [region_names]
 
