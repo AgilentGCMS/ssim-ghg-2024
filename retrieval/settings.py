@@ -1,5 +1,6 @@
 import numpy as np
 from find_nearest import find_nearest
+import os
 
 #Default settings
 
