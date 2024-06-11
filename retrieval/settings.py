@@ -2,7 +2,7 @@ import numpy as np
 from find_nearest import find_nearest
 import os
 
-# Default settings
+#Default settings
 
 # Where are the ABSCO tables kept?
 ABSCO_TABLE_FOLDER = os.path.join(os.environ['HOME'], 'shared/ssim-ghg-data/retrieval_example')
@@ -30,9 +30,10 @@ SNR = 400.0
 
 #Aerosol properties
 height_aerosol = 80000 #Assume the aerosol layer goes from the surface to this pressure in Pa
-d_aerosol = 3.0e-6 #Dust-like particle diameter [m]
-n_aerosol = 1.4 + 0.0003j #Dust-like refractive index
-tau_aerosol_true = 0.1 #AOD in the first band (O2 A-band at ~0.76 um)
+#TEST:d_aerosol = 1e-6 #Particle diameter [m]
+d_aerosol = 3.0e-6 #Particle diameter [m]
+n_aerosol = 1.4 + 0.0003j #Refractive index
+tau_aerosol_true = 0.0 #AOD in the first band (O2 A-band at ~0.76 um)
 
 
 ############################################
@@ -43,6 +44,7 @@ co2_true = np.array([0.0004032 , 0.00041564, 0.00041696, 0.00041686, 0.00041675,
 ch4_true = np.array([500e-9,1500e-9,1900e-9,1900e-9,1900e-9,1900e-9,1900e-9,1900e-9,1900e-9,1900e-9,1900e-9]) #mol/mol
 T_true = np.array([205.59104919, 203.52311895, 220.08876161, 242.37260452, 255.89316285, 266.14411523, 271.82797304, 277.33967816, 279.68627102, 283.79536257, 291.02379557]) #K
 q_true = np.array([3.17349759e-06, 3.60197244e-06, 5.41395304e-05, 6.18924547e-04, 1.51411285e-03, 8.10448167e-04, 4.89113692e-04, 1.82153489e-03, 7.49874173e-03, 8.96673750e-03, 1.03688360e-02]) #kg/kg
+
 
 ############################################
 #A priori settings
@@ -68,16 +70,15 @@ q_prior_uncert = 0.1 #10%
 albedo_uncert = [0.2,0.2,0.2]
 tau_aerosol_prior_uncert = 0.5
 
-#Create a prior covariance matrix
-S_prior = np.zeros((9,9))
-np.fill_diagonal(S_prior,[co2_prior_uncert**2,ch4_prior_uncert**2,T_prior_uncert**2,p_prior_uncert**2,q_prior_uncert**2,albedo_uncert[0]**2,albedo_uncert[1]**2,albedo_uncert[2]**2,tau_aerosol_prior_uncert**2])
+#Create a prior covariance matrix (no aerosols by default)
+S_prior = np.zeros((8,8))
+np.fill_diagonal(S_prior,[co2_prior_uncert**2,ch4_prior_uncert**2,T_prior_uncert**2,p_prior_uncert**2,q_prior_uncert**2,albedo_uncert[0]**2,albedo_uncert[1]**2,albedo_uncert[2]**2])
 
 #How good should our modeled fit of the radiances be before we stop the retrieval?
 chisq_threshold = 1.01
 
 #Used in the finite differencing calculation for T and p
 perturbation = 0.001
-
 
 ##############################################
 #Other spectral stuff that we only want to do once to save time
@@ -123,12 +124,17 @@ for i in range(len(band_min_wn)):
 
 #Calculate a big term used in the ILS function to save time
 ILS_Gaussian_term = []
-for i in range(len(band_min_wn)):
-  ILS_Gaussian_term.append(1.0/sigma_band[i]/((2.0*np.pi)**0.5) * np.exp(-(band_absco_res_wn[i][None,:]-band_absco_res_wn[i][band_wn_index[i][:,None]])**2.0 / 2.0 / sigma_band[i]**2.0))
-
-#Calculate a big term used in the ILS function to save time
-ILS_Gaussian_term = []
 ILS_Gaussian_term_sum = []
 for i in range(len(band_min_wn)):
   ILS_Gaussian_term.append(1.0/sigma_band[i]/((2.0*np.pi)**0.5) * np.exp(-(band_absco_res_wn[i][None,:]-band_absco_res_wn[i][band_wn_index[i][:,None]])**2.0 / 2.0 / sigma_band[i]**2.0))
   ILS_Gaussian_term_sum.append(np.sum(ILS_Gaussian_term[i],axis=1))
+
+#Some default aerosol stuff
+qext_aerosol = []
+ssa_aerosol = []
+P_aerosol = []
+for i in range(len(band_min_wn)):
+  qext_aerosol.append(np.zeros((len(band_absco_res_wn[i]))))
+  ssa_aerosol.append(np.zeros((len(band_absco_res_wn[i]))))
+  P_aerosol.append(np.zeros((len(band_absco_res_wn[i]))))
+
