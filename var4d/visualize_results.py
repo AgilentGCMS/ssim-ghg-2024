@@ -29,6 +29,39 @@ class Visualize(Paths):
             'mip_oco2': 'mip_oco2_mc/summary',
             }
 
+class Diagnostic_Plots(Visualize):
+
+    def __init__(self, project):
+        super(Diagnostic_Plots, self).__init__(project)
+
+    def plot_convergence(self):
+        optim_file = os.path.join(self.output_dir, 'optim_summary.nc')
+        with Dataset(optim_file, 'r') as fid:
+            J = fid.variables['cost_function'][:]
+            dJ = fid.variables['gradient_norm_evals'][:]
+
+        iter_J = np.arange(len(J))
+        iter_dJ = np.arange(len(dJ))
+
+        fig = plt.figure(figsize=(8,3))
+        ax1 = plt.subplot(1,2,1)
+        ax2 = plt.subplot(1,2,2)
+
+        ax1.semilogy(iter_J, J, '-', lw=2)
+        ax1.set_ylabel('Cost function', size=14, family=self.label_font_property['family'])
+        ax1.set_xlabel('Iteration', size=14, family=self.label_font_property['family'])
+
+        ax2.semilogy(iter_dJ, dJ, '-', lw=2)
+        ax2.set_ylabel('L2 norm of gradient', size=14, family=self.label_font_property['family'])
+        ax2.set_xlabel('Evaluation', size=14, family=self.label_font_property['family'])
+
+        plt.setp(ax1.get_xticklabels(), size=12, family=self.label_font_property['family'])
+        plt.setp(ax1.get_yticklabels(), size=12, family=self.label_font_property['family'])
+        plt.setp(ax2.get_xticklabels(), size=12, family=self.label_font_property['family'])
+        plt.setp(ax2.get_yticklabels(), size=12, family=self.label_font_property['family'])
+
+        plt.subplots_adjust(left=0.08, bottom=0.16, right=0.98, top=0.98, wspace=0.25)
+
 class Monte_Carlo_avg(Paths):
 
     def __init__(self, project, glob_pattern='???'):
