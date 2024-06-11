@@ -4,6 +4,7 @@ import os, copy, calendar, glob
 from datetime import datetime, timedelta
 from convert_jacobian import Paths
 import numpy as np
+from collections.abc import Iterable
 from matplotlib.ticker import MaxNLocator
 from tqdm.auto import tqdm
 
@@ -27,6 +28,48 @@ class Visualize(Paths):
             'mip_is': 'mip_is_mc/summary',
             'mip_oco2': 'mip_oco2_mc/summary',
             }
+
+class Diagnostic_Plots(Visualize):
+
+    def __init__(self, project):
+        super(Diagnostic_Plots, self).__init__(project)
+
+    def plot_convergence(self):
+        optim_file = os.path.join(self.output_dir, 'optim_summary.nc')
+        with Dataset(optim_file, 'r') as fid:
+            J = fid.variables['cost_function'][:]
+            dJ = fid.variables['gradient_norm_evals'][:]
+            J_eval = fid.variables['cost_function_evals'][:]
+
+        iter_J = np.arange(len(J))
+        iter_dJ = np.arange(len(dJ))
+        iter_J_eval = np.arange(len(J_eval))
+
+        fig = plt.figure(figsize=(11,3))
+        ax1 = plt.subplot(1,3,1)
+        ax2 = plt.subplot(1,3,2)
+        ax3 = plt.subplot(1,3,3)
+
+        ax1.semilogy(iter_J, J, '-', lw=2)
+        ax1.set_ylabel('Cost function', size=14, family=self.label_font_property['family'])
+        ax1.set_xlabel('Iteration', size=14, family=self.label_font_property['family'])
+
+        ax2.semilogy(iter_J_eval, J_eval, '-', lw=2)
+        ax2.set_ylabel('Cost function', size=14, family=self.label_font_property['family'])
+        ax2.set_xlabel('Evaluation', size=14, family=self.label_font_property['family'])
+
+        ax3.semilogy(iter_dJ, dJ, '-', lw=2)
+        ax3.set_ylabel('L2 norm of gradient', size=14, family=self.label_font_property['family'])
+        ax3.set_xlabel('Evaluation', size=14, family=self.label_font_property['family'])
+
+        plt.setp(ax1.get_xticklabels(), size=12, family=self.label_font_property['family'])
+        plt.setp(ax1.get_yticklabels(), size=12, family=self.label_font_property['family'])
+        plt.setp(ax2.get_xticklabels(), size=12, family=self.label_font_property['family'])
+        plt.setp(ax2.get_yticklabels(), size=12, family=self.label_font_property['family'])
+        plt.setp(ax3.get_xticklabels(), size=12, family=self.label_font_property['family'])
+        plt.setp(ax3.get_yticklabels(), size=12, family=self.label_font_property['family'])
+
+        plt.subplots_adjust(left=0.08, bottom=0.16, right=0.98, top=0.98, wspace=0.25)
 
 class Monte_Carlo_avg(Paths):
 
@@ -224,7 +267,44 @@ class Visualize_Fluxes(Visualize):
     def __init__(self, project):
         super(Visualize_Fluxes, self).__init__(project)
 
-    def plot_region(self, region_names, plot_errs=False):
+    def calculate_error_on_aggregate(self, region_list, month_list, stage):
+        if isinstance(region_list, str):
+            region_list = [region_list]
+        if not isinstance(month_list, Iterable): # month_list has to be a list of datetime objects
+            month_list = [month_list]
+
+        result_file = os.path.join(self.output_dir, 'optim_summary.nc')
+        with Dataset(result_file, 'r') as fid:
+            all_months = [datetime(*d) for d in fid.variables['time_coordinate'][:]]
+            all_regions = [s.lower() for s in fid.variables['region_areas'].region_names.split(',')]
+            region_areas = fid.variables['region_areas'][:]
+
+            region_indices = [all_regions.index(reg.lower()) for reg in region_list]
+            time_indices = [all_months.index(d) for d in month_list]
+            month_lengths = [86400*calendar.monthrange(d.year,d.month)[1] for d in all_months] # seconds
+
+            cov_matrix = fid.variables['%s_cov'%stage][:] # n_state x n_state, (Kg CO2/m^2/s)^2
+
+            n_state = len(fid.dimensions['n_state'])
+            n_region = len(fid.dimensions['n_region'])
+            n_month = len(fid.dimensions['n_month'])
+
+        # what is the total length of all the months to be summed up?
+        total_seconds_in_period = np.array(month_lengths)[np.array(time_indices)].sum()
+        flux_conversion_factor = (12.01/44.01) * 1.0E-12 * (365.25 * 86400) / total_seconds_in_period # from Kg CO2/s to Pg C/year
+
+        # the state vector ordering is region first (slowly varying), then month (fast varying)
+        coeffs = np.zeros(n_state, dtype=np.float64)
+        for i_reg in region_indices:
+            for i_t in time_indices:
+                i_state = i_reg*n_month + i_t
+                coeffs[i_state] = region_areas[i_reg] * month_lengths[i_t] * flux_conversion_factor # convert from Kg CO2/m^2/s to PgC/region/year
+
+        total_err = np.sqrt(np.dot(coeffs, np.matmul(cov_matrix, coeffs))) # PgC/year for this region
+
+        return total_err
+
+    def plot_region(self, region_names, plot_errs=False, err_source='MC'):
         if isinstance(region_names, str):
             region_names = [region_names]
 
@@ -268,21 +348,44 @@ class Visualize_Fluxes(Visualize):
                     prior_flux = 0.0
                     poste_flux = 0.0
                     true_flux = 0.0
+                    region_indices = []
                     for reg_comp in region_components:
-                        region_index = region_names_in_file.index(reg_comp)
-                        prior_flux += fid.variables['prior_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
-                        poste_flux += fid.variables['poste_flux'][region_index] * region_areas[region_index] * flux_conversion_factor # PgC/year
-                        true_flux  += fid.variables['true_flux'][region_index]  * region_areas[region_index] * flux_conversion_factor # PgC/year
+                        i_reg = region_names_in_file.index(reg_comp)
+                        region_indices.append(i_reg)
+                        prior_flux += fid.variables['prior_flux'][i_reg] * region_areas[i_reg] * flux_conversion_factor # PgC/year
+                        poste_flux += fid.variables['poste_flux'][i_reg] * region_areas[i_reg] * flux_conversion_factor # PgC/year
+                        true_flux  += fid.variables['true_flux'][i_reg]  * region_areas[i_reg] * flux_conversion_factor # PgC/year
 
-                if plot_errs and self.project in self.error_dirs: # TODO: add errors on region aggregates
-                    error_file = os.path.join(self.output_root, self.error_dirs[self.project], 'optim_summary_spread.nc')
-                    with Dataset(error_file, 'r') as e_fid:
-                        prior_ensemble = e_fid.variables['prior_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
-                        poste_ensemble = e_fid.variables['poste_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
-                    prior_err = np.std(prior_ensemble, axis=0)
-                    poste_err = np.std(poste_ensemble, axis=0)
-                else:
-                    plot_errs = False
+                if plot_errs:
+                    if err_source.lower() == 'mc' and self.project in self.error_dirs:
+                        error_file = os.path.join(self.output_root, self.error_dirs[self.project], 'optim_summary_spread.nc')
+                        with Dataset(error_file, 'r') as e_fid:
+                            if region.lower() in region_names_in_file:
+                                prior_ensemble = e_fid.variables['prior_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
+                                poste_ensemble = e_fid.variables['poste_flux'][:,region_index] * region_areas[region_index] * flux_conversion_factor
+                            elif region in self.region_aggregates:
+                                prior_ensemble = 0.0
+                                poste_ensemble = 0.0
+                                for i_reg in region_indices:
+                                    prior_ensemble += e_fid.variables['prior_flux'][:,i_reg] * region_areas[i_reg] * flux_conversion_factor
+                                    poste_ensemble += e_fid.variables['poste_flux'][:,i_reg] * region_areas[i_reg] * flux_conversion_factor
+
+                        prior_err = np.std(prior_ensemble, axis=0)
+                        poste_err = np.std(poste_ensemble, axis=0)
+
+                    elif err_source.lower().startswith('hess'):
+                        if region.lower() in region_names_in_file:
+                            region_list = [region]
+                        elif region in self.region_aggregates:
+                            region_list = self.region_aggregates[region]
+                        prior_err = np.zeros(len(month_times), dtype=np.float64)
+                        poste_err = np.zeros(len(month_times), dtype=np.float64)
+                        for i,m in enumerate(tqdm(month_times, desc='Calculating errors from approximate inverse Hessian')):
+                            prior_err[i] = self.calculate_error_on_aggregate(region_list, m, 'prior')
+                            poste_err[i] = self.calculate_error_on_aggregate(region_list, m, 'poste')
+
+                    else:
+                        plot_errs = False
 
                 time_vals = np.arange(len(month_times))
 
@@ -303,13 +406,19 @@ class Visualize_Fluxes(Visualize):
                 tot_prior = np.average(prior_flux[indices_for_total], weights=month_lengths)
                 tot_poste = np.average(poste_flux[indices_for_total], weights=month_lengths)
                 if plot_errs: # calculate error on the totals
-                    prior_ensemble_total = np.zeros(prior_ensemble.shape[0], dtype=prior_ensemble.dtype)
-                    poste_ensemble_total = np.zeros(poste_ensemble.shape[0], dtype=poste_ensemble.dtype)
-                    for i_en in range(prior_ensemble.shape[0]):
-                        prior_ensemble_total[i_en] = np.average(prior_ensemble[i_en][indices_for_total], weights=month_lengths)
-                        poste_ensemble_total[i_en] = np.average(poste_ensemble[i_en][indices_for_total], weights=month_lengths)
-                    tot_prior_err = np.std(prior_ensemble_total)
-                    tot_poste_err = np.std(poste_ensemble_total)
+                    if err_source.lower() == 'mc' and self.project in self.error_dirs:
+                        prior_ensemble_total = np.zeros(prior_ensemble.shape[0], dtype=prior_ensemble.dtype)
+                        poste_ensemble_total = np.zeros(poste_ensemble.shape[0], dtype=poste_ensemble.dtype)
+                        for i_en in range(prior_ensemble.shape[0]):
+                            prior_ensemble_total[i_en] = np.average(prior_ensemble[i_en][indices_for_total], weights=month_lengths)
+                            poste_ensemble_total[i_en] = np.average(poste_ensemble[i_en][indices_for_total], weights=month_lengths)
+                        tot_prior_err = np.std(prior_ensemble_total)
+                        tot_poste_err = np.std(poste_ensemble_total)
+                    elif err_source.lower().startswith('hess'):
+                        month_list = [datetime(2015,m,1) for m in range(1,13)]
+                        tot_prior_err = self.calculate_error_on_aggregate(region_list, month_list, 'prior')
+                        tot_poste_err = self.calculate_error_on_aggregate(region_list, month_list, 'poste')
+
                     plot_ax.errorbar(time_vals[-1]+0.8, tot_prior, yerr=tot_prior_err,
                         fmt='none', ecolor=self.plot_styles['apri']['mec'], elinewidth=1, capsize=3)
                     plot_ax.errorbar(time_vals[-1]+1.2, tot_poste, yerr=tot_poste_err,
