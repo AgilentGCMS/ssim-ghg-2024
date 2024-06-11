@@ -13,9 +13,15 @@ pull_true_transcom_flux = function(prior_flux_file,state_true)
   yy = matrix(state_true,nrow=24,byrow=FALSE)
   #qq = zz[,-1]*yy
   #transcom_fluxes_real = apply(qq,2,sum)  *12/44   *30.5*3600*24*1e3*0.5 * 1e-15 # ~ PgC/yr adjustment to prior
+  
+  #-- These are prior fluxes
+  monthly_prior = zz[,-1] *12/44   *30.5*3600*24*1e3 * 1e-15 
+  annual_2yr_prior = apply(monthly_prior,2,sum) * 0.5  # ~ PgC/yr adjustment to prior
+  
+  #-- These are prior fluxes times true state
   qq = zz[,-1]*yy *12/44   *30.5*3600*24*1e3 * 1e-15 
   transcom_fluxes_real = apply(qq,2,sum) * 0.5  # ~ PgC/yr adjustment to prior
-  ret = list(monthly=qq,annual_2yr=transcom_fluxes_real)
+  ret = list(monthly=qq,annual_2yr=transcom_fluxes_real,monthly_prior=monthly_prior,annual_2yr_prior=annual_2yr_prior)
   return(ret)
 }
 
