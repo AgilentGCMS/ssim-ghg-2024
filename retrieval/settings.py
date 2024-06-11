@@ -30,7 +30,6 @@ SNR = 400.0
 
 #Aerosol properties
 height_aerosol = 80000 #Assume the aerosol layer goes from the surface to this pressure in Pa
-#TEST:d_aerosol = 1e-6 #Particle diameter [m]
 d_aerosol = 3.0e-6 #Particle diameter [m]
 n_aerosol = 1.4 + 0.0003j #Refractive index
 tau_aerosol_true = 0.0 #AOD in the first band (O2 A-band at ~0.76 um)

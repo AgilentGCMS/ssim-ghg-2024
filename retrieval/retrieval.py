@@ -372,7 +372,7 @@ class Retrieval:
     def __init__(self):
 
         self.iterations = 0
-        self.chisq_reduced_previous = 99999.0
+        self.chisq_reduced_previous = 9999999.0
 
     def run(self, x, model_prior, model_true, absco_data, chisq_threshold=s.chisq_threshold):
 
@@ -492,6 +492,29 @@ class Retrieval:
                 print("More than 5 iterations, so we're stopping...")
                 done=True
                 continue
+
+        print("-----------------------------------------------------------------------------------------------------------------------")
+        print("Final reduced chisq = ",self.chisq_reduced)
+        if "CO2 Profile Multiplicative Offset" in x["names"] and "CH4 Profile Multiplicative Offset" in x["names"]:
+            xco2_ret_temp = calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e6
+            xch4_ret_temp = calculate_Xgas(model_prior.ch4*x["ret"][1], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e9
+            print("Final retrieved XCO2 =".ljust(23),'{:.5f}'.format(xco2_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xco2_ret_temp*np.diagonal(self.S)[0]**0.5),"ppm")
+            print("Final XCO2 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xco2_ret_temp - model_true.xco2).rjust(8),"ppm")
+            print("Final retrieved XCH4 =".ljust(23),'{:.5f}'.format(xch4_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xch4_ret_temp*np.diagonal(self.S)[1]**0.5),"ppb")
+            print("Final XCH4 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xch4_ret_temp - model_true.xch4).rjust(8),"ppb")
+
+        elif "CO2 Profile Multiplicative Offset" in x["names"] and "CH4 Profile Multiplicative Offset" not in x["names"]:
+            xco2_ret_temp = calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e6
+            print("Final retrieved XCO2 =".ljust(23),'{:.5f}'.format(xco2_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xco2_ret_temp*np.diagonal(self.S)[0]**0.5),"ppm")
+            print("Final XCO2 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xco2_ret_temp - model_true.xco2).rjust(8),"ppm")
+
+        elif "CO2 Profile Multiplicative Offset" not in x["names"] and "CH4 Profile Multiplicative Offset" in x["names"]:
+            xch4_ret_temp = calculate_Xgas(model_prior.ch4*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e9
+            print("Final retrieved XCH4 =".ljust(23),'{:.5f}'.format(xch4_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xch4_ret_temp*np.diagonal(self.S)[0]**0.5),"ppb")
+            print("Final XCH4 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xch4_ret_temp - model_true.xch4).rjust(8),"ppb")
+
+        else:
+            print("Unexpected state vector setup!")
 
         print("Total retrieval time =",'{:.2f}'.format(time.time()-time_total),"s")
 
