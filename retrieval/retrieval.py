@@ -33,7 +33,6 @@ ILS_width = 5.0
 class ForwardFunction:
     def __init__(self,SNR=s.SNR,sza_0=s.sza_0,sza=s.sza,co2=s.co2_true,ch4=s.ch4_true,T=s.T_true,p=s.p_true,q=s.q_true,albedo=s.albedo_true,band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_spectral_resolutions=s.band_spectral_resolutions,band_min_um=s.band_min_um,band_max_um=s.band_max_um,band_spectral_points=s.band_spectral_points,band_wn=s.band_wn,band_wl=s.band_wl,band_absco_res_wn=s.band_absco_res_wn,resolving_power_band=s.resolving_power_band,sigma_band=s.sigma_band,band_wn_index=s.band_wn_index,ILS_Gaussian_term=s.ILS_Gaussian_term,ILS_Gaussian_term_sum=s.ILS_Gaussian_term_sum,absco_data=None,band_molecules=s.band_molecules,P_aerosol=s.P_aerosol,ssa_aerosol=s.ssa_aerosol,qext_aerosol=s.qext_aerosol,height_aerosol=s.height_aerosol,tau_aerosol=None,measurement_error=False,jacobians=False):
 
-
         self.SNR = SNR
         self.sza_0 = sza_0
         self.sza = sza
@@ -215,34 +214,16 @@ class ForwardFunction:
 
         #print("Calculating radiances...")
         for i in range(len(self.band_min_um)):
-            #Approximately scale tau_aerosol by qext in the first band
-
-            #THIS IS WRONG. It's giving tau_aerosol non-realistic per-band shape
-            #if self.tau_aerosol != None:  tau_aerosol_temp = self.tau_aerosol * (self.qext_aerosol[i] / np.mean(self.qext_aerosol[0]))
-            #else: tau_aerosol_temp = np.zeros(len(self.qext_aerosol[i]))
-
-            #What Chris is doing, kinda
-            #if self.tau_aerosol != None:  tau_aerosol_temp = self.tau_aerosol * (self.qext_aerosol[i] / self.qext_aerosol[0][0])
-            #else: tau_aerosol_temp = np.zeros(len(self.qext_aerosol[i]))
-  
-            #Correct?
-            #if self.tau_aerosol != None:  tau_aerosol_temp = np.full(len(self.qext_aerosol[i]),self.tau_aerosol * (np.mean(self.qext_aerosol[i]) / np.mean(self.qext_aerosol[0])))
-            #else: tau_aerosol_temp = np.zeros(len(self.qext_aerosol[i]))
 
             if self.tau_aerosol != None: tau_aerosol_temp = np.full(len(self.band_absco_res_wn[i]),self.tau_aerosol)
             else: 
               tau_aerosol_temp = np.zeros(len(self.band_absco_res_wn[i]))
 
-            #time1=time.time()
             I, I_albedo, I_aerosol, I_q, I_co2, I_ch4 = self.intensity(self.band_absco_res_wn[i],self.tau_star_band[i],self.tau_above_aerosol_star_band[i],self.tau_star_band_q[i],self.tau_above_aerosol_star_band_q[i],self.tau_star_band_co2[i],self.tau_above_aerosol_star_band_co2[i],self.tau_star_band_ch4[i],self.tau_above_aerosol_star_band_ch4[i],tau_aerosol_temp,self.ssa_aerosol[i],self.P_aerosol[i],self.qext_aerosol[0],self.qext_aerosol[i],self.mu,self.mu_0,self.m,self.albedo[i],self.band_solar_irradiances[i],self.jacobians)
-            #print("Time for intensity calc = ",time.time()-time1)
             
-            #time1=time.time()
             #Calculate the spectral response function (with and without multiplying by intensity)
             Sc_I_band, Sc_I_band_albedo, Sc_I_band_aerosol, Sc_I_band_q, Sc_I_band_co2, Sc_I_band_ch4 = self.spectral_response_function(self.band_wn_index[i],self.band_absco_res_wn[i],self.sigma_band[i],self.ILS_Gaussian_term[i],I,I_albedo,I_aerosol,I_q,I_co2,I_ch4,self.jacobians)
-            #print("Time for ILS calc = ",time.time()-time1)
 
-            #time1=time.time()
             #Calculate radiance (Rc) by integrating intensity times ILS, and reverse to plot in micrometers
             Rc_band = (Sc_I_band/self.ILS_Gaussian_term_sum[i])[::-1]
 
@@ -253,7 +234,6 @@ class ForwardFunction:
               Rc_band_q = (Sc_I_band_q/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
               Rc_band_co2 = (Sc_I_band_co2/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
               Rc_band_ch4 = (Sc_I_band_ch4/self.ILS_Gaussian_term_sum[i][:,None])[::-1,:]
-            #print("Sum ILS time = ",time.time()-time1)
 
             #Append for the band we're on
             self.R_band.append(Rc_band)
@@ -272,9 +252,6 @@ class ForwardFunction:
           self.y_q = np.concatenate(self.R_band_q)
           self.y_co2 = np.concatenate(self.R_band_co2)
           self.y_ch4 = np.concatenate(self.R_band_ch4)
-
-        #FOR TESTING
-        #np.random.seed(1124)
 
         noise = []
         for i in range(len(self.band_max_wn)):
@@ -319,24 +296,14 @@ class ForwardFunction:
         qext_scaling = qext_aerosol/qext_aerosol_band_0[0]
 
       #Direct exponential term
-      #TEST
-      #exp_term = np.exp(-m*(tau_star_band + tau_aerosol*qext_aerosol[0]/qext_aerosol_band_0[0]))
       exp_term = np.exp(-m*(tau_star_band + tau_aerosol*qext_scaling))
-      #exp_term = np.exp(-m*(tau_star_band + tau_aerosol))
 
       #Scattering exponential term
       exp_term_above_aerosol = np.exp(-m*tau_above_aerosol_star_band)
 
-      #I_direct = albedo * mu_0 * np.exp(-m*(tau_star_band + tau_aerosol))
-      #I_scattering =  ssa_aerosol * P_aerosol * tau_aerosol * np.exp(-m*tau_above_aerosol_star_band) / 4. / mu
 
       for i in range(len(band)):
         #Add an aerosol layer. Assume it scatters once.
-        #I[i] = band_solar_irradiances/np.pi * (albedo*mu_0*exp_term[i] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*exp_term_above_aerosol[i]/4./mu)
-
-        #Scalar qext scaling
-        #I[i] = band_solar_irradiances/np.pi * (albedo*mu_0*exp_term[i] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*(qext_aerosol[0]/qext_aerosol_band_0[0])*exp_term_above_aerosol[i]/4./mu)
-
         #Full qext scaling
         I[i] = band_solar_irradiances/np.pi * (albedo*mu_0*exp_term[i] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*qext_scaling[i]*exp_term_above_aerosol[i]/4./mu)
 
@@ -344,25 +311,12 @@ class ForwardFunction:
         if jacobians:
           I_albedo[i] = band_solar_irradiances/np.pi * mu_0 * exp_term[i]
 
-          #I_aerosol[i] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i]) + ssa_aerosol[i]*P_aerosol[i]*exp_term_above_aerosol[i]/4./mu)
-          #TEST including Qext/Qext_0 in the aerosol Jacobian
           I_aerosol[i] = band_solar_irradiances/np.pi * (-m*qext_scaling[i]*albedo*mu_0*exp_term[i] + ssa_aerosol[i]*P_aerosol[i]*qext_scaling[i]*exp_term_above_aerosol[i]/4./mu)
-
-          #Scalar qext scaling
-          #I_q[i,:] = band_solar_irradiances/np.pi * (albedo*mu_0*exp_term[i] * (-m) * tau_star_band_q[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*(qext_aerosol[0]/qext_aerosol_band_0[0])*exp_term_above_aerosol[i]/4./mu * (-m) * tau_above_aerosol_star_band_q[i,:])
-          #I_co2[i,:] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i] * tau_star_band_co2[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*(qext_aerosol[0]/qext_aerosol_band_0[0])*exp_term_above_aerosol[i]/4./mu * tau_above_aerosol_star_band_co2[i,:]))
-          #I_ch4[i,:] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i] * tau_star_band_ch4[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*(qext_aerosol[0]/qext_aerosol_band_0[0])*exp_term_above_aerosol[i]/4./mu * tau_above_aerosol_star_band_ch4[i,:]))
 
           #Full qext scaling:
           I_q[i,:] = band_solar_irradiances/np.pi * (albedo*mu_0*exp_term[i] * (-m) * tau_star_band_q[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*qext_scaling[i]*exp_term_above_aerosol[i]/4./mu * (-m) * tau_above_aerosol_star_band_q[i,:])
           I_co2[i,:] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i] * tau_star_band_co2[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*qext_scaling[i]*exp_term_above_aerosol[i]/4./mu * tau_above_aerosol_star_band_co2[i,:]))
           I_ch4[i,:] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i] * tau_star_band_ch4[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*qext_scaling[i]*exp_term_above_aerosol[i]/4./mu * tau_above_aerosol_star_band_ch4[i,:]))
-
-          #No qext scaling:
-          #I_q[i,:] = band_solar_irradiances/np.pi * (albedo*mu_0*exp_term[i] * (-m) * tau_star_band_q[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*exp_term_above_aerosol[i]/4./mu * (-m) * tau_above_aerosol_star_band_q[i,:])
-          #I_co2[i,:] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i] * tau_star_band_co2[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*exp_term_above_aerosol[i]/4./mu * tau_above_aerosol_star_band_co2[i,:]))
-          #I_ch4[i,:] = band_solar_irradiances/np.pi * (-m*(albedo*mu_0*exp_term[i] * tau_star_band_ch4[i,:] + ssa_aerosol[i]*P_aerosol[i]*tau_aerosol[i]*exp_term_above_aerosol[i]/4./mu * tau_above_aerosol_star_band_ch4[i,:]))
-
 
       return I, I_albedo, I_aerosol, I_q, I_co2, I_ch4
 
@@ -413,16 +367,12 @@ class ForwardFunction:
 
 class Retrieval:
     '''Retrieval object. Parameter defaults are set in settings.py
-    band_max_wn               [array] sfddsfds
-    band_min_wn               [array] sdfdsf
-    band_spectral_resolution  [array] fdsf
-
     '''
 
     def __init__(self):
 
         self.iterations = 0
-        self.chisq_reduced_previous = 99999.0
+        self.chisq_reduced_previous = 9999999.0
 
     def run(self, x, model_prior, model_true, absco_data, chisq_threshold=s.chisq_threshold):
 
@@ -474,18 +424,6 @@ class Retrieval:
             self.K = np.zeros((len(model_true.y),len(x["ret"])))
             for i in range(len(x["ret"])):
 
-                #For comparing Jacobians:
-                #Need to use finite differencing for T and p Jacobians
-                #if ("Temperature" in x["names"][i]) or ("Pressure" in x["names"][i]):
-                #    x_perturbed = deepcopy(x)
-                #    x_perturbed["ret"][i] += s.perturbation
-                #    model_perturbed = self.forward_model(x_perturbed, model_prior, absco_data, jacobians=False)
-                #    self.K[:,i] = ((model_perturbed.y - model_ret.y)/s.perturbation)
-                #    print("Finite diff Jacobians = ",self.K[:,i])
-                #    print("Analytical Jacobian   = ",model_ret.y_k[:,i])
-
-
-                #CORRECT
                 #Need to use finite differencing for T and p Jacobians
                 if ("Temperature" in x["names"][i]) or ("Pressure" in x["names"][i]):
                     x_perturbed = deepcopy(x)
@@ -554,6 +492,29 @@ class Retrieval:
                 print("More than 5 iterations, so we're stopping...")
                 done=True
                 continue
+
+        print("-----------------------------------------------------------------------------------------------------------------------")
+        print("Final reduced chisq = ",self.chisq_reduced)
+        if "CO2 Profile Multiplicative Offset" in x["names"] and "CH4 Profile Multiplicative Offset" in x["names"]:
+            xco2_ret_temp = calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e6
+            xch4_ret_temp = calculate_Xgas(model_prior.ch4*x["ret"][1], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e9
+            print("Final retrieved XCO2 =".ljust(23),'{:.5f}'.format(xco2_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xco2_ret_temp*np.diagonal(self.S)[0]**0.5),"ppm")
+            print("Final XCO2 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xco2_ret_temp - model_true.xco2).rjust(8),"ppm")
+            print("Final retrieved XCH4 =".ljust(23),'{:.5f}'.format(xch4_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xch4_ret_temp*np.diagonal(self.S)[1]**0.5),"ppb")
+            print("Final XCH4 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xch4_ret_temp - model_true.xch4).rjust(8),"ppb")
+
+        elif "CO2 Profile Multiplicative Offset" in x["names"] and "CH4 Profile Multiplicative Offset" not in x["names"]:
+            xco2_ret_temp = calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e6
+            print("Final retrieved XCO2 =".ljust(23),'{:.5f}'.format(xco2_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xco2_ret_temp*np.diagonal(self.S)[0]**0.5),"ppm")
+            print("Final XCO2 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xco2_ret_temp - model_true.xco2).rjust(8),"ppm")
+
+        elif "CO2 Profile Multiplicative Offset" not in x["names"] and "CH4 Profile Multiplicative Offset" in x["names"]:
+            xch4_ret_temp = calculate_Xgas(model_prior.ch4*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e9
+            print("Final retrieved XCH4 =".ljust(23),'{:.5f}'.format(xch4_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xch4_ret_temp*np.diagonal(self.S)[0]**0.5),"ppb")
+            print("Final XCH4 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xch4_ret_temp - model_true.xch4).rjust(8),"ppb")
+
+        else:
+            print("Unexpected state vector setup!")
 
         print("Total retrieval time =",'{:.2f}'.format(time.time()-time_total),"s")
 
