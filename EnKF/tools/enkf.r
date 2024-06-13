@@ -412,9 +412,9 @@ plot.is.timeseries <- function(xs,
       
       if(is.null(simulated[[ds]])) {
         simulated[[ds]] <- data.frame(nm=sim,time=obs_catalog$DATE[lx])
-      } else {
-        simulated[[ds]][[nm]] <- sim
-      }
+      } 
+      simulated[[ds]][[nm]] <- sim
+
       ylim <- range(c(ylim,sim),na.rm=TRUE)
     }
 
