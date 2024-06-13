@@ -1,4 +1,4 @@
-# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/time-varying/persist.r: 13 Jun 2024 (Thu) 19:36:56 UTC>
+# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/time-varying/modpersist.r: 13 Jun 2024 (Thu) 19:42:19 UTC>
 
 # This code applies the EnKF measurement update to a truth condition
 # generated from scaling factors derived from OCO-2 v10 MIP models.
@@ -255,8 +255,11 @@ for (imon in 1:nmons) {
 
   # time propagation
   
-  psi <- diag(1,nparms) # persistence
-  Spsi <- diag(0.5,nparms) # process noise covariance matrix
+  # Need to drop last month out of assimilation window, and introduce
+  # fresh month at head.
+  
+  psi <- diag(sign(state.enkf$x.post[,imon])/abs(state.enkf$x.post[,imon])^0.2,nparms) # modified persistence, decay towards 1.0
+  Spsi <- diag(1.3,nparms)
   state.enkf$x.prior[,imon+1] <- psi %*% state.enkf$x.post[,imon]
   Spsi.deviations <- generate_ensemble(Sx=Spsi,nmemb=nmemb)
   for (imemb in 1:nmemb) {
@@ -312,11 +315,11 @@ cat(sprintf(" [EnKF] chi2 means: state %.2f, prior %.2f, obs %.2f on %d (%d) DOF
 
 plot.x.timeseries(ests=list(Truth=list(x=truth_condition),
                             EnKF=list(x=state.enkf$x.post.finals,Sx=state.enkf$Sx)),
-                  pdf.name="persist.x.pdf")
+                  pdf.name="modpersist.x.pdf")
 
 plot.flux.timeseries(ests=list(Truth=list(x=truth_condition),
                                EnKF=list(x=state.enkf$x.post.finals,Sx=state.enkf$Sx)),
-                  pdf.name="persist.flux.pdf")
+                  pdf.name="modpersist.flux.pdf")
 
 
 plot.is.timeseries(xs=list(Truth=truth_condition,
@@ -328,6 +331,6 @@ plot.is.timeseries(xs=list(Truth=truth_condition,
                                    "co2_spo_surface-insitu_1_allvalid",
                                    "co2_lef_tower-insitu_1_allvalid-396magl"),
                    H=H.orig,
-                   pdf.name='persist.obs.pdf')
+                   pdf.name='modpersist.obs.pdf')
 
-#save(file="persist.rda", state.enkf,enkf.x.working,dx.working)
+#save(file="modpersist.rda", state.enkf,enkf.x.working,dx.working)
