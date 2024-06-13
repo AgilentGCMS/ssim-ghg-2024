@@ -460,7 +460,7 @@ plot.is.timeseries <- function(xs,
     dev.off() # close pdf
   }
   
-  return(sim)
+  # return(sim) # an option, not necessarily recommended
 }
 
 plot.flux.timeseries <- function(ests,
@@ -624,6 +624,7 @@ plot.flux.timeseries <- function(ests,
   if(!is.null(pdf.name)) {
     dev.off() # close pdf
   }
+    
 }
   
  
@@ -778,6 +779,7 @@ plot.x.timeseries <- function(ests,
   if(!is.null(pdf.name)) {
     dev.off() # close pdf
   }
+
 }
   
  
