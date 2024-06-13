@@ -1,4 +1,4 @@
-# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/tools/enkf.r: 05 Jun 2024 (Wed) 03:28:25 UTC>
+# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/tools/enkf.r: 12 Jun 2024 (Wed) 17:05:38 UTC>
 
 # Return data frame of the relevant pieces of a set of furnished
 # obspack_id values (x)
@@ -254,7 +254,7 @@ enkf_meas_update_loc <- function(x,dx,obs,y,dy,Szd,localization_mask=NULL) {
   # dx  - prior state ensemble deviations (nparms x nmemb)
   # obs - observed values (nobs x 1)
   # y   - central value simulated values (nobs x 1)
-  # dy  - ensemble simulated values (nobs x nmemb)
+  # dy  - ensemble deviation simulated values (nobs x nmemb)
   # Szd - measurement error vector (MDM); in units of variance (nobs x 1). Not a matrix; is diagonal of formal Sz matrix
   # localization_mask - matrix of 1s and 0s to multiply K and potentially zero-out the effect of a given obs on a given parameter (nparms x nobs) 
   
@@ -625,3 +625,159 @@ plot.flux.timeseries <- function(ests,
     dev.off() # close pdf
   }
 }
+  
+ 
+plot.x.timeseries <- function(ests,
+                              cols=NULL,
+                              regions=1:22,
+                              pdf.name=NULL) {
+
+  # The input "ests" is a list, each element of which is a state
+  # estimate (i.e., a list itself, containing x and Sx). The "truth"
+  # element should only have x, not Sx.
+  require(plotrix)
+    
+  nests <- length(ests)
+  time.axis <- seq.midmon(2014,9,2016,8)
+  xlim <- range(time.axis)
+  
+  for (nm in names(ests)) {
+    # If in 1x528 space, convert to 24x22 space
+    dim(ests[[nm]]$x) <- c(24,22)
+    if(!is.null(ests[[nm]]$Sx)) { # because truth won't have Sx
+      dim(ests[[nm]]$Sx) <- c(24*22,24*22)
+    }
+  }
+    
+  do.deviations <- FALSE
+  if("Truth" %in% names(ests)) {
+    do.deviations <- TRUE
+    for (nm in names(ests)) {
+      if(nm=="Truth") {
+        next
+      }
+      ests[[nm]]$dx <- ests[[nm]]$x - ests$Truth$x
+    }
+  }
+
+  # if colors not provided, generate a set
+  if(is.null(cols)) {
+    these.colors <- palette.colors(n = nests, palette = "Okabe-Ito")
+    cols <- list()
+    for (icol in 1:nests) {
+      cols[[names(ests)[icol]]] <- these.colors[icol]
+    }
+  }
+
+  if(!is.null(pdf.name)) {
+    pdf(pdf.name,width=6,height=7.5)
+    par(bg='white')
+  }
+  
+  # layout() makes subplots
+  layout(matrix(1:4,nrow=4))
+
+  # las=1 makes axis numbers always horizontal
+  #
+  # mai is the set of interior (subplot) margins in inches. Defaults
+  # are too big.
+  
+  par(las=1,mai=c(0.5,0.6,0.6,0.1))
+  cex <- 0.8
+  
+  for (ireg in regions) {
+    
+    ylim.full <- c(NA,NA)
+    ylim.deviations <- c(NA,NA)
+    lx.reg <- (ireg-1)*24 + 1:24
+    
+    for (nm in names(ests)) {
+
+      x <- ests[[nm]]$x[,ireg]
+      if(!is.null(ests[[nm]]$Sx)) {
+        sx <- sqrt(diag(ests[[nm]]$Sx[lx.reg,lx.reg]))
+      } else {
+        sx <- rep(0,24)
+      }
+
+      ylim.full <- range(c(ylim.full,(x+sx),(x-sx)),na.rm=TRUE)
+      if(do.deviations) {
+        if(nm=="Truth") {
+          next
+        }
+        ylim.deviations <- range(c(ylim.deviations,
+        	(ests[[nm]]$dx[,ireg]+sx),
+        	(ests[[nm]]$dx[,ireg]-sx)),na.rm=TRUE)
+      }
+    } # nm
+
+    plot(NA,NA,xlim=xlim,ylim=ylim.full,
+         main=transcom.regions$full.name[ireg],
+         xaxt='n',
+         ylab='scaling factor',xlab='')
+
+    axis.POSIXct(side=1,at=time.axis,format="%b-%Y")
+
+    pchs <- numeric(0) # an empty numeric vector
+    ltys <- numeric(0) # an empty numeric vector
+    dts <- 30.5*86400*seq(from=-0.4,to=0.4,length.out=nests)
+    iest <- 0
+    for (nm in names(ests)) {
+      iest <- iest+1
+      dt <- dts[iest]
+      flux <- ests[[nm]]$x[,ireg]
+      if(nm=="Truth") {
+        pch <- 1
+        lty <- NA
+        points(x=time.axis+dt,y=flux,pch=pch,cex=cex,col=cols[[nm]])
+      } else {
+        pch <- 20
+        lty <- 1
+        flux.sd <- sqrt(diag(ests[[nm]]$Sx[lx.reg,lx.reg]))
+        plotCI(x=time.axis+dt,y=flux,uiw=flux.sd,pch=pch,cex=cex,col=cols[[nm]],add=TRUE,sfrac=0)
+      }
+      pchs <- c(pchs,pch) # append to pchs
+      ltys <- c(ltys,lty) # append to ltys
+    }
+    legend(x=mean(xlim),y=ylim.full[2]+0.4*diff(ylim.full),
+           pch=pchs,col=unlist(cols),xjust=0.5,
+           legend=names(ests),horiz=TRUE,lty=ltys,lwd=2,
+           xpd=NA,bty='n')
+
+    if(do.deviations) {
+      plot(NA,NA,xlim=xlim,ylim=ylim.deviations,
+           main=sprintf("Errors for %s",transcom.regions$full.name[ireg]),
+           xaxt='n',
+           ylab='scaling factor errors',xlab='')
+
+      axis.POSIXct(side=1,at=time.axis,format="%b-%Y")
+      abline(h=0,col="grey60")
+
+      iest <- 0
+      for (nm in names(ests)) {
+        iest <- iest+1
+        dt <- dts[iest]
+        if(nm=="Truth") {
+          next
+        }
+        dflux <- ests[[nm]]$dx[,ireg]
+        dflux.sd <- sqrt(diag(ests[[nm]]$Sx[lx.reg,lx.reg]))
+        plotCI(time.axis+dt,y=dflux,uiw=dflux.sd,pch=20,cex=cex,col=cols[[nm]],add=TRUE,sfrac=0)
+      }
+      these.names <- setdiff(names(cols),"Truth")
+      these.cols <- cols[these.names]
+      legend(x=mean(xlim),
+             y=ylim.deviations[2]+0.4*diff(ylim.deviations),
+             pch=20,col=unlist(these.cols),xjust=0.5,
+             legend=these.names,horiz=TRUE,lty=1,lwd=2,
+             xpd=NA,bty='n')
+    }
+    
+  } # ireg
+  
+  if(!is.null(pdf.name)) {
+    dev.off() # close pdf
+  }
+}
+  
+ 

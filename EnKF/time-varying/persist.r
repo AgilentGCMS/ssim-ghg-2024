@@ -1,152 +1,356 @@
-# Time-stamp: <hercules-login-1.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/time-varying/persist.r: 23 May 2024 (Thu) 15:03:14 UTC>
+# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/time-varying/persist.r: 12 Jun 2024 (Wed) 23:36:13 UTC>
 
+# This code applies the EnKF measurement update to a truth condition
+# generated from scaling factors derived from OCO-2 v10 MIP models.
+
+#source("../tools/invert_clean.r")
 source("../tools/enkf.r")
 source("../tools/progress.bar.r")
 source("../tools/find.indir.r")
+source("../tools/time.r")
+source("../tools/load.ncdf4.r")
+options(warn=2) # error out on warnings (probably they are mistakes)
 indir <- find.indir()
 
-# Load sensitivity matrices (Jacobians)
-t0 <- proc.time()[3]
-cat("Loading Jacobians...")
-load(file.path(indir,"inversion_examples/jacobians/trunc_full_jacob_030624_with_dimnames_sib4_4x5_mask.rda"))
-load(file.path(indir,"inversion_examples/jacobians/jacob_bgd_021624.rda"))
-orig.H <- list()
-orig.H$H <- jacob*(22/44) # Andrew reports units conversion needed
-orig.H$H_fixed <- jacob_bgd[,c(2,3)]
-rm(jacob,jacob_bgd)
+library(txtplot)
 
-cat(sprintf('%.1fs\n',proc.time()[3]-t0))
-
-nobs <- dim(orig.H$H)[1]
-
-# One question often asked is what happens if we get the MDM
-# wrong. You can check that below, by changing r.assumed to be
-# different from r.actual.
-r.actual <- rep(0.5,nobs) # variance in ppm^2
-#r.assumed <- rep(0.1,nobs) # variance in ppm^2
-r.assumed <- r.actual
-
-nmemb <- 3000
-nparms <- 22 # 22 regions
-nmons <- 24 # 24 months
-
-Sx <- diag(rep(1,nparms))
-Sx.prior <- 1e4*Sx # uninformative prior
-
-state <- list()
-x <- matrix(0,nrow=nparms,ncol=1) # prior central value
-dx <- generate_ensemble(Sx=Sx.prior,nmemb=nmemb) # prior deviations
-
-truth_condition <- matrix(NA,nrow=nmons,ncol=nparms)
-for (imon in 1:nmons) {
-  truth_condition[imon,] <- generate_ensemble(Sx=Sx,nmemb=1)
+# Since these load() statements can take some time, we can supply
+# them pre-loaded from memory or load them here.
+if(!exists("H.orig")) {
+  t0 <- proc.time()[3]
+  cat("Loading Jacobians...")
+  load(file.path(indir,"inversion_examples/jacobians/trunc_full_jacob_030624_with_dimnames_sib4_4x5_mask.rda"))
+  H <- jacob*(12/44) # Andrew reports units conversion needed
+  rm(jacob)
+  # We'll be subsetting H later; preserve the original matrix for
+  # later use.
+  H.orig <- H
+  cat(sprintf('%.1fs\n',proc.time()[3]-t0))
+}
+  
+if(!exists("obs_catalog")) {
+  t0 <- proc.time()[3]
+  cat("Loading obs_catalog...")
+  load(file.path(indir,"inversion_examples/obs/obs_catalog_042424_unit_pulse_hour_timestamp_witherrors_withdates.rda"))
+  # change time zone to "UTC" for obs_catalog times (is by default
+  # "GMT")
+  attributes(obs_catalog$DATE)$tzone <- "UTC"
+  cat(sprintf('%.1fs\n',proc.time()[3]-t0))
 }
 
+nreg <- 22
+nlag <- 3 # months
+nparms <- nreg*nlag
+nmons <- 24
+nmemb <- 1000
+# probability (0-1) that obs will be randomly selected for
+# assimilation
+obs.prob <- 0.01
+
+# This function maps a set of nreg parameters for a given month (22
+# values) onto the nreg*nmons.prior (528) space
+parm.indices <- function(imon) {
+  return((0:21)*24 + imon)
+}
+
+load(file.path(indir,"inversion_examples/misc/truth_array.rda"))
+
+# Andrew uses a tm() function to limit the range of values in an
+# array. This function does the same but is very explicit. Note that
+# the which() function temporarily casts x from a multidimensional
+# array to a vector, and the x[lx] assignment does the same. The
+# dimensions attribute of x is unaffacted, so the array size is
+# unaffected. 
+trim <- function(x,limits) {
+  if(length(limits)!=2) {
+    stop("Expecting 2-vector for limits argument")
+  }
+  lx <- which(x < limits[1])
+  if(length(lx)>0) {
+    x[lx] <- limits[1]
+  }
+  lx <- which(x > limits[2])
+  if(length(lx)>0) {
+    x[lx] <- limits[2]
+  }
+  return(x)
+}
+
+truth_condition <- -1 * trim(truth_array[1:24,2:23,1,1],c(-2,2))
+dim(truth_condition) <- c(nreg*nmons,1) 
+# Finally, add back the 1.0 that Andrew removed
+truth_condition <- truth_condition + 1.0
+
+# generate obs
 nobs <- dim(H)[1]
-obs <- simulate_observed(H=H, x=truth_condition,H_fixed=H_fixed,r=r.actual)
+# "d" suffix means its the diagonal (of a diagonal matrix)
+Szd.actual <- rep(0.5^2,nobs) # variance in ppm^2
+#Szd.assumed <- rep((0.1)^2,nobs) # variance in ppm^2
+Szd.assumed <- Szd.actual
+# Note that supplying a Szd argument to the simulate_observed function
+# will result in perturbations being added to the observations.  This
+# would be the place to add biases to obs.
+obs <- simulate_observed(H=H,
+                         x=matrix(truth_condition,nrow=nreg*nmons),
+                         Szd=Szd.actual)
 dim(obs) <- c(nobs,1)
 
-# Restrict to nobs randomly sampled subset of measurements. Could use
-# obs_catalog or row.names of H to do more systematically-chosen
-# subsets.
-nobs <- 10000
-lx <- sample(x=1:length(obs),size=nobs)
-obs <- obs[lx,]
-r.assumed <- r.assumed[lx]
-r.actual <- r.actual[lx]
-H <- H[lx,]
-H_fixed <- H_fixed[lx,]
 
-# generate obs and obs deviations corresponding to x and the dx
-# parameter deviations.  Note that H_fixed are the fire and FF
-# components sampled at the obs locations.
+state.enkf <- list()
+state.enkf$x.prior <- matrix(NA,nrow=nparms,ncol=nmons+nlag)
+state.enkf$dx.prior <- array(NA,dim=c(nmemb,nparms,nmons+nlag))
+state.enkf$x.post <- matrix(NA,nrow=nparms,ncol=nmons+nlag)
+state.enkf$dx.post <- array(NA,dim=c(nmemb,nparms,nmons+nlag))
 
-y <- simulate_observed(H=H,x=x,
-                       H_fixed=H_fixed)
-dy <- t(simulate_observed(H=H,x=t(dx),
-                          H_fixed=H_fixed))
+state.kf <- list()
+state.kf$x.prior <- matrix(NA,nrow=nparms,ncol=nmons+nlag)
+state.kf$Sx.prior <- array(NA,dim=c(nparms,nparms,nmons+nlag))
+state.kf$x.post <- matrix(NA,nrow=nparms,ncol=nmons+nlag)
+state.kf$Sx.post <- array(NA,dim=c(nparms,nparms,nmons+nlag))
 
-# The rejection and localization procedures are (currently) both
-# serial loops over nobs and are therefore very slow. They are
-# amenable to trivial parallelization, but this is not yet
-# implemented. They also can be combined into one procedure, which is
-# what we do operationally.
+Sx.prior <- diag(1,nparms)
+#Sx.prior[2,2] <- 10
+state.kf$x.prior[,1] <- 1
+state.enkf$x.prior[,1] <- 1
+state.kf$Sx.prior[,,1] <- Sx.prior
+state.enkf$dx.prior[,,1] <- generate_ensemble(Sx=Sx.prior,nmemb=nmemb) # prior deviations
 
-reject.outliers <- FALSE
-localize <- FALSE
+time.edges <- seq(ISOdatetime(2014,9,1,0,0,0,tz="UTC"),
+                  ISOdatetime(2016,12,1,0,0,0,tz="UTC"),
+                  by="1 month")
 
-if(reject.outliers) {
-  rej.mask <- find_outliers(y=y,dy=dy,obs=obs,r=r.assumed)
+# While prior is 1, zeros here makes sense because we're using it to
+# generate obs, and we cannot have influence of fluxes after the time
+# of a given measurement.
+enkf.x.working <- matrix(0,nrow=(nmons+3)*nreg,ncol=1)
 
-  if(any(rej.mask==1)) {
-    cat(sprintf("%d observations rejected as outliers\n",
-                length(which(rej.mask==1))))
-    lx <- which(rej.mask==0) # these are the ones to keep
-    nobs <- length(lx)
-    dy <- dy[lx,]
-    y <- y[lx]
-    obs <- obs[lx]
-    r.assumed <- r.assumed[lx]
-    r.actual <- r.actual[lx]
-    H <- H[lx,]
-    H_fixed <- H_fixed[lx,]
-    
+lx.selected.all <- numeric(0) # empty vector to be used for storage later.
+
+for (imon in 1:nmons) {
+
+  # on first time step, assimilate all obs from beginning to nlag
+  # months, on subsequent time steps, just one months' worth of obs
+  if(imon==1) {
+    t0 <- min(obs_catalog$DATE) # (or time.edges[1], no difference)
+  } else {
+    t0 <- time.edges[imon+nlag-1]
   }
-}
+  t1 <- time.edges[imon+nlag]
+  if(any(is.na(c(t0,t1)))) { 
+    n.window <- 0
+    n.selected <- 0
+  } else {
+    lx.window <- which((obs_catalog$DATE >= t0) &
+                       (obs_catalog$DATE < t1))
+    n.window <- length(lx.window)
+    
+    lx.selected <- lx.window[which(runif(n=n.window)<=obs.prob)]
+    lx.selected.all <- c(lx.selected.all,lx.selected)
+    n.selected <- length(lx.selected)
+
+    if(n.window >0) {
+      pctage <- 100*n.selected/n.window
+    } else {
+      pctage <- 0
+    }
+    cat(sprintf("[%d] %d obs selected out of %d available (%.1f%%), %s to %s\n",
+                imon,n.selected,n.window,pctage,
+                format(t0,"%d-%b-%Y"),
+                format(t1,"%d-%b-%Y")))
+  }
+
+  # Populate imon through imon + nlag -1 monthly slots of the working
+  # array with priors. For months that have fallen out of the
+  # assimilation window, this working array will have posteriors. All
+  # of these will be used to generate simulated values for
+  # measurements.
+  for (ilag in 1:nlag) {
+    enkf.x.working[parm.indices(imon+ilag-1),1] <- state.enkf$x.prior[seq(ilag,by=3,length.out=22),imon]
+    stop()
+  }
+
+#  cat(sprintf("[DBG] enkf.x.working: %d zeros:\n",length(which(enkf.x.working==0))))
+#  print(summary(enkf.x.working[,1]))
+
+  if(n.selected > 0) {
+
+    # assimilate
+    these.obs <- obs[lx.selected]
+    these.Szd <- Szd.assumed[lx.selected]
+
+    # We need a state vector and an ensemble with the total number of
+    # parameters, 22x24, to multiply the Jacobian H. The working state
+    # vector will have posteriors for months that have fallen out of
+    # the assimilation window, priors within the window, and zeros for
+    # months not yet in the window. The deviations ensemble will have
+    # zeros for all months outside of the window.
+
+    y.prior <- simulate_observed(H=H[lx.selected,],
+                                 x=enkf.x.working[1:(nreg*nmons)])
+
+    dx.working <- matrix(0,nrow=nmemb,ncol=nmons*nreg)
+    if(imon>1) {
+      cat("Consider dx.working early to zero\n")
+      for(jmon in 1:(imon-1)) {
+        dx.working[,parm.indices(jmon)] <- state.enkf$dx.post[,seq(ilag,by=3,length.out=22),jmon]
+      }
+    }      
+    for (ilag in 1:nlag) {
+      dx.working[,parm.indices(imon+ilag-1)] <- state.enkf$dx.prior[,seq(ilag,by=3,length.out=22),imon]
+      
+    }
+
+    dy.prior <- t(simulate_observed(H=H[lx.selected,],
+                                    x=t(dx.working)))
 
 
-if(localize) {
-  loc.mask <- localization_tval(dx=dx,dy=dy)
+    if(FALSE) {
+      cat(sprintf("[DBG] dx.working: %d x %d. diag(cov(dx.working)):\n",dim(dx.working)[1],dim(dx.working)[2]))
+      Sx <- cov(dx.working)
+      print(summary(diag(Sx)))
+      
+      cat(sprintf("[DBG] dy.prior: %d x %d. diag(cov(dy.prior)):\n",dim(dy.prior)[1],dim(dy.prior)[2]))
+      Sy <- cov(dy.prior)
+      print(summary(diag(Sy)))
+    }
+    
+    # R stores matrices in column-major format. That means if a matrix
+    # "foo" is 2x3 (nrow x ncolumn) and looks like:
+    #   > foo
+    #          [,1]   [,2]   [,3]
+    #   [1,] "r1c1" "r1c2" "r1c3"
+    #   [2,] "r2c1" "r2c2" "r2c3"
+    #   > dim(foo)
+    #   [1] 2 3
+    
+    # Then if we assign dims 6x1 to it, we will get:
+    #   > dim(foo) <- c(6,1)
+    #   > foo
+    #          [,1]
+    #   [1,] "r1c1"
+    #   [2,] "r2c1"
+    #   [3,] "r1c2"
+    #   [4,] "r2c2"
+    #   [5,] "r1c3"
+    #   [6,] "r2c3"
+    #
+    # The r1c1, r2c1, r1c2, ... ordering is how column-major data are
+    # stored in memory: the rows change quickest, the columns slowest.
+    
+    # The original matrix can be retrieved by just assigning 2x3
+    # dimensions back to foo.  We will change dimensions on matrices
+    # knowing that this storage order is preserved:
+    #
+    #   > dim(foo) <- c(2,3)
+    #   > foo
+    #          [,1]   [,2]   [,3]
+    #   [1,] "r1c1" "r1c2" "r1c3"
+    #   [2,] "r2c1" "r2c2" "r2c3"
+
+    post <- enkf_meas_update_loc(x=state.enkf$x.prior[,imon],
+                                 dx=state.enkf$dx.prior[,,imon],
+                                 obs=these.obs,
+                                 Szd=these.Szd,
+                                 y=y.prior,dy=dy.prior,
+                                 localization_mask=NULL)
+
+#    stop("Is this propoagating parameters correctly?")
+    
+    state.enkf$x.post[,imon] <- post$x
+    state.enkf$dx.post[,,imon] <- post$dx
+
+    # Populate imon through imon + nlag -1 monthly slots of the
+    # working array with posteriors.  Those months falling out of the
+    # assimilation window will never again get updated. Those
+    # remaining in the window will receive further updates.
+    
+    for (ilag in 1:nlag) {
+      enkf.x.working[parm.indices(imon+ilag-1)] <- state.enkf$x.post[seq(ilag,by=3,length.out=22),imon]
+    }
+
+  } else {
+    # No obs, no change
+    state.enkf$x.post[,imon] <- state.enkf$x.prior[,imon]
+    state.enkf$dx.post[,,imon] <- state.enkf$dx.prior[,,imon]
+  }
+
+  # time propagation
   
-  cat(sprintf("%.1f%% of obs-parm relationships localized away.\n",
-              100*length(which(as.vector(loc.mask)==0))/(nparms*nobs)))
-} else {
-  loc.mask <- NULL
+  # Need to drop last month out of assimilation window, and introduce
+  # fresh month at head.
+  
+  psi <- diag(1,nparms) # persistence
+  Spsi <- diag(5,nparms)
+#  Spsi[1,1] <- 10
+#  Spsi[23,23] <- 10
+#  Spsi[45,45] <- 10
+  state.enkf$x.prior[,imon+1] <- psi %*% state.enkf$x.post[,imon]
+  Spsi.deviations <- generate_ensemble(Sx=Spsi,nmemb=nmemb)
+  for (imemb in 1:nmemb) {
+    state.enkf$dx.prior[imemb,,imon+1] <- psi %*% state.enkf$dx.post[imemb,,imon] + Spsi.deviations[imemb,]
+  } # imemb
+
+} # imon
+
+state.enkf$Sx <- matrix(0,nrow=nmons*nreg,ncol=nmons*nreg)
+state.enkf$Sx.prior <- matrix(0,nrow=nmons*nreg,ncol=nmons*nreg)
+for(imon in 1:nmons) {
+  p0 <- nreg*(imon-1) + 1
+  p1 <- p0+nreg-1
+  state.enkf$Sx[p0:p1,p0:p1] <- cov(state.enkf$dx.post[,seq(1,by=3,length.out=22),imon])  
+  state.enkf$Sx.prior[p0:p1,p0:p1] <- cov(state.enkf$dx.prior[,seq(1,by=3,length.out=22),imon])
+  cat(sprintf("For imon %d, p0 to p1 is %d to %d\n",imon,p0,p1))
 }
-
-obs_fixed <- apply(H_fixed,c(1),sum)
-
-# obs-obs_fixed because we remove the fixed components.
-enkf <- enkf_meas_update_loc(x=x,dx=dx,obs=obs-obs_fixed,
-                             y=y,dy=dy,r=r.assumed,
-                             localization_mask=loc.mask)
-
-# compute sample covariance to represent posterior Sx
-Sx.enkf <- cov(enkf$dx)
-
-# Schuh invert_clean. Some different variable names,
-# subset_indicator_obs can be used to subset the measurements (we do
-# not use that).
-subset_indicator_obs=rep(TRUE,dim(H)[1])
-ret2 = invert_clean(H=H,R_diagonal=r.assumed,P_0=Sx.prior,y=obs,H_bgd=H_fixed,
-                    subset_indicator_obs=subset_indicator_obs)
-
-# Kalman filter measurement update
-kf <- kf_meas_update(x=x,Sx=Sx.prior,H=H,z=obs-obs_fixed,
-                     Sz=diag(r.assumed))
-
-posterior.dofs <- TRUE
+for(ireg in 1:nreg) {
+  p0 <- nmons*(ireg-1) + 1
+  p1 <- p0+nmons-1
+  state.enkf$Sx[p0:p1,p0:p1] <- cov(state.enkf$dx.post[,seq(1,by=3,length.out=22),imon])  
+  state.enkf$Sx.prior[p0:p1,p0:p1] <- cov(state.enkf$dx.prior[,seq(1,by=3,length.out=22),imon])
+  cat(sprintf("For imon %d, p0 to p1 is %d to %d\n",imon,p0,p1))
+}
+  stop()
+posterior.dofs <- FALSE
 
 if(posterior.dofs) {
-  ndofs.ic <- ndofs.patil(ret2$posterior$P)
-  ndofs.kf <- ndofs.patil(kf$Sx)
-  ndofs.enkf <- ndofs.patil(Sx.enkf)
+  ndofs.enkf <- ndofs.patil(enkf$Sx)
 } else {
-  ndofs.ic <- nparms
-  ndofs.kf <- nparms
-  ndofs.enkf <- nparms
+  ndofs.enkf <- nmons*nreg
 }
 
-chi2.kf <- (1/ndofs.kf) * t(kf$x - truth_condition) %*% solve(kf$Sx) %*% (kf$x - truth_condition)
+state.enkf$x.post.finals <- t(state.enkf$x.post[seq(1,length.out=22,by=3),1:nmons])
+dim(state.enkf$x.post.finals) <- c(nmons*nreg,1)
 
-chi2.enkf <- (1/ndofs.enkf) * t(enkf$x - truth_condition) %*% solve(Sx.enkf) %*% (enkf$x - truth_condition)
+obs.enkf.post <- simulate_observed(x=state.enkf$x.post.finals,H=H[lx.selected.all,])
 
-chi2.ic <- (1/ndofs.ic) * t(ret2$posterior$x_hat + 1 - truth_condition) %*% solve(ret2$posterior$P) %*% (ret2$posterior$x_hat + 1 - truth_condition)
+x.prior <- matrix(1,nrow=nreg*nmons,ncol=1)
 
-cat(sprintf("Schuh: chi2mn_state: %.2f on %d DOFs; RMSE %.2f\n",chi2.ic,ndofs.ic,compute.rmse(ret2$posterior$x_hat - truth_condition)))
+chi2.state.enkf <- (1/ndofs.enkf) * t(state.enkf$x.post.finals - truth_condition) %*% solve(state.enkf$Sx) %*% (state.enkf$x.post.finals - truth_condition)
+chi2.prior.enkf <- (1/nparms) * t(state.enkf$x.post.finals - x.prior) %*% solve(state.enkf$Sx.prior) %*% (state.enkf$x.post.finals - x.prior)
 
-cat(sprintf("   KF: chi2mn_state: %.2f on %d DOFs; RMSE %.2f\n",chi2.kf,ndofs.kf,compute.rmse(kf$x - truth_condition)))
+chi2.obs.enkf <- (1/nobs) * t(obs[lx.selected.all] - obs.enkf.post) %*% diag(1/Szd.assumed[lx.selected.all]) %*% (obs[lx.selected.all] - obs.enkf.post)
 
-cat(sprintf(" EnKF: chi2mn_state: %.2f on %d DOFs, RMSE %.2f\n",chi2.enkf,ndofs.enkf,compute.rmse(enkf$x - truth_condition)))
+cat(sprintf(" [EnKF] chi2 means: state %.2f, prior %.2f, obs %.2f on %d (%d) DOFs, RMSE %.2f (%d members)\n",
+            chi2.state.enkf,chi2.prior.enkf,chi2.obs.enkf,ndofs.enkf,ndofs.patil(state.enkf$Sx),compute.rmse(state.enkf$x.post.finals - truth_condition),nmemb))
 
-save(enkf,kf,ret2,truth_condition,file="compare_methods.results.rda")
+
+plot.x.timeseries(ests=list(Truth=list(x=truth_condition),
+                            EnKF=list(x=state.enkf$x.post.finals,Sx=state.enkf$Sx)),
+                  pdf.name="persist.x.pdf")
+
+plot.flux.timeseries(ests=list(Truth=list(x=truth_condition),
+                               EnKF=list(x=state.enkf$x.post.finals,Sx=state.enkf$Sx)),
+                  pdf.name="persist.flux.pdf")
+
+
+plot.is.timeseries(xs=list(Truth=truth_condition,
+                           EnKF=state.enkf$x.post.finals,
+                           Prior=x.prior),
+                   dataset_names=c("co2_mlo_surface-insitu_1_allvalid",
+                                   "co2_brw_surface-insitu_1_allvalid",
+                                   "co2_smo_surface-insitu_1_allvalid",
+                                   "co2_spo_surface-insitu_1_allvalid",
+                                   "co2_lef_tower-insitu_1_allvalid-396magl"),
+                   H=H.orig,
+                   pdf.name='persist.obs.pdf')
+
+save(file="persist.rda", state.enkf,enkf.x.working,dx.working)
