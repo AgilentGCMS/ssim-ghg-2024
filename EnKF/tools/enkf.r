@@ -368,6 +368,10 @@ plot.is.timeseries <- function(xs,
   if(!is.null(pdf.name)) {
     pdf(pdf.name,width=8,height=7)
     par(bg='white')
+    # layout() makes subplots
+    layout(matrix(1:3,nrow=3))
+  } else {
+    options(repr.plot.width=10,repr.plot.height=5,repr.plot.res=100)
   }
 
   nxs <- length(xs)
@@ -381,9 +385,6 @@ plot.is.timeseries <- function(xs,
     }
   }
   
-  # layout() makes subplots
-  layout(matrix(1:3,nrow=3))
-
   # las=1 makes axis numbers always horizontal
   #
   # mai is the set of interior (subplot) margins in inches. Defaults
@@ -437,7 +438,7 @@ plot.is.timeseries <- function(xs,
                  format="%b-%Y")
 
     pchs <- numeric(0) # an empty numeric vector
-    for (nm in c(setdiff(names(xs),"Truth"),"Truth") { # this moves "Truth" to last in plotting order
+    for (nm in c(setdiff(names(xs),"Truth"),"Truth")) { # this moves "Truth" to last in plotting order
 
       pch <- 20
       pchs <- c(pchs,pch) # append to pchs
@@ -515,11 +516,12 @@ plot.flux.timeseries <- function(ests,
   if(!is.null(pdf.name)) {
     pdf(pdf.name,width=6,height=7.5)
     par(bg='white')
+    # layout() makes subplots
+    layout(matrix(1:4,nrow=4))
+  } else {
+    options(repr.plot.width=10,repr.plot.height=5,repr.plot.res=100)
   }
   
-  # layout() makes subplots
-  layout(matrix(1:4,nrow=4))
-
   # las=1 makes axis numbers always horizontal
   #
   # mai is the set of interior (subplot) margins in inches. Defaults
@@ -670,10 +672,12 @@ plot.x.timeseries <- function(ests,
   if(!is.null(pdf.name)) {
     pdf(pdf.name,width=6,height=7.5)
     par(bg='white')
+    # layout() makes subplots
+    layout(matrix(1:4,nrow=4))
+  } else {
+    options(repr.plot.width=10,repr.plot.height=5,repr.plot.res=100)
   }
   
-  # layout() makes subplots
-  layout(matrix(1:4,nrow=4))
 
   # las=1 makes axis numbers always horizontal
   #
