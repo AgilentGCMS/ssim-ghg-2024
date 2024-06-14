@@ -15,7 +15,7 @@ class Visualize(Paths):
         self.output_dir = os.path.join(self.output_root, project)
         self.project = project
         self.plot_styles = {
-            'obs': {'c': 'xkcd:puce', 'mec': 'xkcd:puce', 'mfc': 'xkcd:goldenrod', 'marker': 'o', 'ms': 5, 'mew': 0.5},
+            'obs': {'c': 'xkcd:black', 'mec': 'xkcd:black', 'mfc': 'xkcd:grey', 'marker': 'o', 'ms': 5, 'mew': 0.5},
             'apri': {'c': 'xkcd:cerulean', 'mec': 'xkcd:cerulean', 'mfc': 'xkcd:powder blue', 'marker': 'd', 'ms': 5, 'mew': 0.5},
             'apos': {'c': 'xkcd:orange red', 'mec': 'xkcd:orange red', 'mfc': 'xkcd:baby pink', 'marker': 's', 'ms': 5, 'mew': 0.5},
             }

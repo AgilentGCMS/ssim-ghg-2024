@@ -55,6 +55,8 @@ class RunSpecs(Paths):
             n_month += 1
             cur_date += relativedelta(months=1)
         self.n_month = n_month
+        self.land_indices = np.s_[:11*self.n_month]
+        self.ocean_indices = np.s_[11*self.n_month:22*self.n_month]
 
         self.transcom_regions = [ # because someone was not diligent about putting this in the data files
             'North American Boreal', 'North American Temperate', 'South American Tropical', 'South American Temperate',
@@ -193,7 +195,7 @@ class Fluxes(RunSpecs):
 
         return state_vector
 
-    def construct_state_vector_from_sib4(self, smush_regions=True):
+    def construct_state_vector_from_sib4(self, smush_regions=True, land_var='I2b', ocean_var='Fnetoce'):
         ym_tuples = []
         cur_month = self.start_date
         while cur_month < self.end_date:
@@ -202,8 +204,8 @@ class Fluxes(RunSpecs):
 
         state_vec = 0.0
         for year, month in tqdm(ym_tuples, desc='Converting SiB4 to state vector'):
-            flux_nee = self.read_sib4_flux(year, month, 'I2b')
-            flux_oce = self.read_sib4_flux(year, month, 'Fnetoce')
+            flux_nee = self.read_sib4_flux(year, month, land_var)
+            flux_oce = self.read_sib4_flux(year, month, ocean_var)
             if smush_regions:
                 flux_4x5 = self.convert_1x1_flux_to_4x5(flux_nee+flux_oce)
                 state_vec = state_vec + self.convert_4x5_flux_to_statevector(flux_4x5, year, month)
@@ -601,11 +603,13 @@ class Var4D_Components(RunSpecs):
                     for j in range(self.n_month):
                         temp_corr_mat[i,j] = np.exp(-np.abs(i-j)/temp_corr)
         elif temp_corr.lower() == 'clim':
-            # each month is perfectly correlated with the same month in other years
+            # each month is highly correlated with the same month in other years
+            temp_corr_mat = np.eye(self.n_month) # the diagonal
             for i in range(self.n_month):
-                for j in range(self.n_month):
+                for j in range(i+1, self.n_month):
                     if (i-j) % 12 == 0:
-                        temp_corr_mat[i,j] = 1.0
+                        temp_corr_mat[i,j] = 0.9
+                        temp_corr_mat[j,i] = 0.9
         else:
             raise RuntimeError('Please implement how to handle temp_corr choice %s'%temp_corr)
 
@@ -646,7 +650,8 @@ class Var4D_Components(RunSpecs):
 
     def var4d_setup(self, **kwargs):
         obs_to_assim = kwargs['obs_to_assim']  if 'obs_to_assim' in kwargs else {'sites': ['mlo','spo']}
-        prior_unc_scale = kwargs['prior_unc_scale'] if 'prior_unc_scale' in kwargs else 0.25
+        prior_unc_scale = kwargs['prior_unc_scale'] if 'prior_unc_scale' in kwargs else {'land': 0.25, 'ocean': 0.25}
+        prior_unc_source = kwargs['prior_unc_source'] if 'prior_unc_source' in kwargs else 'nee'
         corr_structure = kwargs['corr_structure'] if 'corr_structure' in kwargs else {'temp_corr': 2.0}
         perturb_obs = kwargs['perturb_obs'] if 'perturb_obs' in kwargs else False
         perturb_flux = kwargs['perturb_flux'] if 'perturb_flux' in kwargs else False
@@ -662,8 +667,18 @@ class Var4D_Components(RunSpecs):
         with Timer("Prior fluxes and covariance setup in ", print=self.verbose):
             # set up the prior, which is SiB4
             self.state_prior = self.flux_cons.construct_state_vector_from_sib4()
-            # set up prior uncertainty, which (let's say) is 25% of the prior
-            self.unc_prior = prior_unc_scale * np.abs(self.state_prior)
+            # set up prior uncertainty
+            self.unc_prior = np.zeros_like(self.state_prior)
+            if prior_unc_source.lower() == 'nee':
+                self.unc_prior[self.land_indices] = prior_unc_scale['land'] * np.abs(self.state_prior[self.land_indices])
+            elif prior_unc_source.lower() == 'gpp':
+                state_unc = self.flux_cons.construct_state_vector_from_sib4(smush_regions=False, land_var='Fgpp_SiB4')
+                self.unc_prior[self.land_indices] = prior_unc_scale['land'] * np.abs(state_unc[self.land_indices])
+            elif prior_unc_source.lower() == 'reco':
+                state_unc = self.flux_cons.construct_state_vector_from_sib4(smush_regions=False, land_var='I4')
+                self.unc_prior[self.land_indices] = prior_unc_scale['land'] * np.abs(state_unc[self.land_indices])
+            # not many choices to set ocean errors
+            self.unc_prior[self.ocean_indices] = prior_unc_scale['ocean'] * np.abs(self.state_prior[self.ocean_indices])
             # set up prior covariance matrix, assuming a 2 month decay and no cross-region correlation
             prior_corr = self.setup_corr(**corr_structure)
             # make correlation expicitly symmetric to avoid roundoff errors
