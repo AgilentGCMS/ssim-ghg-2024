@@ -1,4 +1,4 @@
-# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/base/MIP_sfs.r: 07 Jun 2024 (Fri) 21:05:47 UTC>
+# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/base/MIP_sfs.r: 13 Jun 2024 (Thu) 23:49:17 UTC>
 
 # This code applies the EnKF measurement update to a truth condition
 # generated from scaling factors derived from OCO-2 v10 MIP models.
@@ -231,6 +231,9 @@ chi2.prior.enkf <- (1/nparms) * t(enkf$x - x.prior) %*% solve(Sx.prior) %*% (enk
 obs.enkf.post <- simulate_observed(H=H,x=enkf$x)
 chi2.obs.enkf <- (1/nobs) * t(obs - obs.enkf.post) %*% diag(1/Szd.assumed) %*% (obs - obs.enkf.post)
 
+state.z.enkf <- solve(chol(enkf$Sx)) %*% (enkf$x - truth_condition)
+normality.test(state.z.enkf,known.mean=0,known.sd=1)
+stop()
 chi2.state.ic <- (1/ndofs.ic) * t(batch$posterior$x_hat - truth_condition) %*% solve(batch$posterior$P) %*% (batch$posterior$x_hat - truth_condition)
 chi2.prior.ic <- (1/nparms) * t(batch$posterior$x_hat - x.prior) %*% solve(Sx.prior) %*% (batch$posterior$x_hat - x.prior)
 obs.ic.post <- simulate_observed(H=H,x=batch$posterior$x_hat)
