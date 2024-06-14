@@ -587,7 +587,13 @@ plot.flux.timeseries <- function(ests,
       pchs <- c(pchs,pch) # append to pchs
       ltys <- c(ltys,lty) # append to ltys
     }
-    legend(x=mean(xlim),y=ylim.full[2]+0.4*diff(ylim.full),
+    if(!is.null(pdf.name)) {
+        y <- ylim.full[2]+0.4*diff(ylim.full)
+    } else {
+        y <- ylim.full[2]+0.2*diff(ylim.full)
+    }
+
+    legend(x=mean(xlim),y=y,
            pch=pchs,col=unlist(cols),xjust=0.5,
            legend=names(ests),horiz=TRUE,lty=ltys,lwd=2,
            xpd=NA,bty='n')
@@ -614,8 +620,13 @@ plot.flux.timeseries <- function(ests,
       }
       these.names <- setdiff(names(cols),"Truth")
       these.cols <- cols[these.names]
+      if(!is.null(pdf.name)) {
+          y <- ylim.deviations[2]+0.4*diff(ylim.deviations)
+      } else {
+          y <- ylim.deviations[2]+0.2*diff(ylim.deviations)
+      }
       legend(x=mean(xlim),
-             y=ylim.deviations[2]+0.4*diff(ylim.deviations),
+             y=y,
              pch=20,col=unlist(these.cols),xjust=0.5,
              legend=these.names,horiz=TRUE,lty=1,lwd=2,
              xpd=NA,bty='n')
@@ -744,7 +755,14 @@ plot.x.timeseries <- function(ests,
       pchs <- c(pchs,pch) # append to pchs
       ltys <- c(ltys,lty) # append to ltys
     }
-    legend(x=mean(xlim),y=ylim.full[2]+0.4*diff(ylim.full),
+
+      if(!is.null(pdf.name)) {
+          y <- ylim.full[2]+0.4*diff(ylim.full)
+      } else {
+          y <- ylim.full[2]+0.2*diff(ylim.full)
+      }
+      
+    legend(x=mean(xlim),y=y,
            pch=pchs,col=unlist(cols),xjust=0.5,
            legend=names(ests),horiz=TRUE,lty=ltys,lwd=2,
            xpd=NA,bty='n')
@@ -771,8 +789,13 @@ plot.x.timeseries <- function(ests,
       }
       these.names <- setdiff(names(cols),"Truth")
       these.cols <- cols[these.names]
+      if(!is.null(pdf.name)) {
+          y <- ylim.deviations[2]+0.4*diff(ylim.deviations)
+      } else {
+          y <- ylim.deviations[2]+0.2*diff(ylim.deviations)
+      }
       legend(x=mean(xlim),
-             y=ylim.deviations[2]+0.4*diff(ylim.deviations),
+             y=y,
              pch=20,col=unlist(these.cols),xjust=0.5,
              legend=these.names,horiz=TRUE,lty=1,lwd=2,
              xpd=NA,bty='n')
