@@ -440,7 +440,10 @@ plot.is.timeseries <- function(xs,
     pchs <- numeric(0) # an empty numeric vector
     for (nm in c(setdiff(names(xs),"Truth"),"Truth")) { # this moves "Truth" to last in plotting order
 
-      pch <- 20
+        pch <- 20
+        if(nm=="Truth") {
+          cex <- 0.05
+        }
       pchs <- c(pchs,pch) # append to pchs
       
       points(simulated[[ds]]$time,
