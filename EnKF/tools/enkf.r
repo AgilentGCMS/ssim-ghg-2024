@@ -810,3 +810,14 @@ plot.x.timeseries <- function(ests,
 }
   
  
+limit.z <- function(mat,zlim) {
+  lx <- which(mat < zlim[1])
+  if(length(lx)>1) {
+    mat[lx] <- zlim[1]
+  }
+  lx <- which(mat > zlim[2])
+  if(length(lx)>1) {
+    mat[lx] <- zlim[2]
+  }
+  return(mat)
+}
