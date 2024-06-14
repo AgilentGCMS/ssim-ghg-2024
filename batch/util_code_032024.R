@@ -302,8 +302,10 @@ plot_transcom_flux_by_month = function(ret){
       scale_fill_manual(values=c("red", "blue","green")) +
       ylab("PgC/year") +
       geom_point(data=new_data, aes(x=MONTH, y=FLUX, fill=KIND), color="black",bg="green", size=5, pch=21) +
-      labs(title=transcom_names[transcom_region_plot_monthly]) + theme(axis.text=element_text(size=12),
-                                                                       axis.title=element_text(size=14,face="bold"),title=element_text(size=16),legend.text=element_text(size=14))
+      labs(title=transcom_names[transcom_region_plot_monthly]) + theme(axis.text=element_text(size=12),                                                               axis.title=element_text(size=14,face="bold"),title=element_text(size=16),legend.text=element_text(size=14)) +
+      scale_x_discrete(breaks=c("1","2","3","4","5","6","7","8","9","10","11","12",
+                               "13","14","15","16","17","18","19","20","21","22","23","24"),
+                       labels=dts) + theme(axis.text.x = element_text(angle=70,size=15))
     
     
     

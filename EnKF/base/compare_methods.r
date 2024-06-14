@@ -1,4 +1,4 @@
-# Time-stamp: <hercules-login-1.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/base/compare_methods.r: 23 May 2024 (Thu) 23:53:28 UTC>
+# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/base/compare_methods.r: 03 Jun 2024 (Mon) 23:43:29 UTC>
 
 # This code selects a random subset of obs, and a randomly-generated
 # truth condition. Of course, the EnKF uses a randomly-generated
@@ -147,6 +147,10 @@ subset_indicator_obs=rep(TRUE,dim(H)[1])
 ic = invert_clean(H=H,R_diagonal=sqrt(Szd.assumed),
                   P_0=Sx.prior,y=obs,H_bgd=H_fixed,
                   subset_indicator_obs=subset_indicator_obs)
+
+# Adding 1.0 to ic results because Andrew's code explicitly
+# centers the scaling factors by subtracting 1.0
+ic$posterior$x_hat <- ic$posterior$x_hat + 1
 
 # Kalman filter measurement update
 kf <- kf_meas_update(x=x.prior,Sx=Sx.prior,H=H,z=obs-obs_fixed,

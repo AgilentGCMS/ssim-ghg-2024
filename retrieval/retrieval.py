@@ -33,6 +33,7 @@ ILS_width = 5.0
 class ForwardFunction:
     def __init__(self,SNR=s.SNR,sza_0=s.sza_0,sza=s.sza,co2=s.co2_true,ch4=s.ch4_true,T=s.T_true,p=s.p_true,q=s.q_true,albedo=s.albedo_true,band_min_wn=s.band_min_wn,band_max_wn=s.band_max_wn,band_spectral_resolutions=s.band_spectral_resolutions,band_min_um=s.band_min_um,band_max_um=s.band_max_um,band_spectral_points=s.band_spectral_points,band_wn=s.band_wn,band_wl=s.band_wl,band_absco_res_wn=s.band_absco_res_wn,resolving_power_band=s.resolving_power_band,sigma_band=s.sigma_band,band_wn_index=s.band_wn_index,ILS_Gaussian_term=s.ILS_Gaussian_term,ILS_Gaussian_term_sum=s.ILS_Gaussian_term_sum,absco_data=None,band_molecules=s.band_molecules,P_aerosol=s.P_aerosol,ssa_aerosol=s.ssa_aerosol,qext_aerosol=s.qext_aerosol,height_aerosol=s.height_aerosol,tau_aerosol=None,measurement_error=False,jacobians=False):
 
+
         self.SNR = SNR
         self.sza_0 = sza_0
         self.sza = sza
@@ -301,7 +302,6 @@ class ForwardFunction:
       #Scattering exponential term
       exp_term_above_aerosol = np.exp(-m*tau_above_aerosol_star_band)
 
-
       for i in range(len(band)):
         #Add an aerosol layer. Assume it scatters once.
         #Full qext scaling
@@ -367,12 +367,16 @@ class ForwardFunction:
 
 class Retrieval:
     '''Retrieval object. Parameter defaults are set in settings.py
+    band_max_wn               [array] sfddsfds
+    band_min_wn               [array] sdfdsf
+    band_spectral_resolution  [array] fdsf
+
     '''
 
     def __init__(self):
 
         self.iterations = 0
-        self.chisq_reduced_previous = 99999.0
+        self.chisq_reduced_previous = 9999999.0
 
     def run(self, x, model_prior, model_true, absco_data, chisq_threshold=s.chisq_threshold):
 
@@ -449,7 +453,7 @@ class Retrieval:
             x["ret"] += x["dx"]
 
             #Print things. Index of CO2/CH4 depend on the forward model used.
-            if "CO2 Profile Multiplicative Offset" in x["names"] and "CH4 Profile Multiplicative Offset" in x["names"]:
+            if "CO2 Profile Scale Factor" in x["names"] and "CH4 Profile Scale Factor" in x["names"]:
                 print("-----------")
                 print("Prior XCO2 =".ljust(31),'{:.5f}'.format(model_prior.xco2).rjust(10),"ppm")
                 print("True XCO2 =".ljust(31),'{:.5f}'.format(model_true.xco2).rjust(10),"ppm")
@@ -463,7 +467,7 @@ class Retrieval:
                 print("XCH4 error (retrieved - true) =".ljust(31),'{:.5f}'.format(calculate_Xgas(model_prior.ch4*x["ret"][1], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e9 - model_true.xch4).rjust(10),"ppb")
                 print("-----------")
 
-            elif "CO2 Profile Multiplicative Offset" in x["names"] and "CH4 Profile Multiplicative Offset" not in x["names"]:
+            elif "CO2 Profile Scale Factor" in x["names"] and "CH4 Profile Scale Factor" not in x["names"]:
                 print("-----------")
                 print("Prior XCO2 =".ljust(31),'{:.5f}'.format(model_prior.xco2).rjust(10),"ppm")
                 print("True XCO2 =".ljust(31),'{:.5f}'.format(model_true.xco2).rjust(10),"ppm")
@@ -471,7 +475,7 @@ class Retrieval:
                 print("XCO2 error (retrieved - true) =".ljust(31),'{:.5f}'.format(calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e6 - model_true.xco2).rjust(10),"ppm")
                 print("-----------")
 
-            elif "CO2 Profile Multiplicative Offset" not in x["names"] and "CH4 Profile Multiplicative Offset" in x["names"]:
+            elif "CO2 Profile Scale Factor" not in x["names"] and "CH4 Profile Scale Factor" in x["names"]:
                 print("-----------")
                 print("Prior XCH4 =".ljust(31),'{:.5f}'.format(model_prior.xch4).rjust(10),"ppb")
                 print("True XCH4 =".ljust(31),'{:.5f}'.format(model_true.xch4).rjust(10),"ppb")
@@ -493,6 +497,29 @@ class Retrieval:
                 done=True
                 continue
 
+        print("-----------------------------------------------------------------------------------------------------------------------")
+        print("Final reduced chisq = ",self.chisq_reduced)
+        if "CO2 Profile Scale Factor" in x["names"] and "CH4 Profile Scale Factor" in x["names"]:
+            xco2_ret_temp = calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e6
+            xch4_ret_temp = calculate_Xgas(model_prior.ch4*x["ret"][1], model_prior.p*x["ret"][3], model_prior.q*x["ret"][4])[0] * 1e9
+            print("Final retrieved XCO2 =".ljust(23),'{:.5f}'.format(xco2_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xco2_ret_temp*np.diagonal(self.S)[0]**0.5),"ppm")
+            print("Final XCO2 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xco2_ret_temp - model_true.xco2).rjust(8),"ppm")
+            print("Final retrieved XCH4 =".ljust(23),'{:.5f}'.format(xch4_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xch4_ret_temp*np.diagonal(self.S)[1]**0.5),"ppb")
+            print("Final XCH4 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xch4_ret_temp - model_true.xch4).rjust(8),"ppb")
+
+        elif "CO2 Profile Scale Factor" in x["names"] and "CH4 Profile Scale Factor" not in x["names"]:
+            xco2_ret_temp = calculate_Xgas(model_prior.co2*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e6
+            print("Final retrieved XCO2 =".ljust(23),'{:.5f}'.format(xco2_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xco2_ret_temp*np.diagonal(self.S)[0]**0.5),"ppm")
+            print("Final XCO2 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xco2_ret_temp - model_true.xco2).rjust(8),"ppm")
+
+        elif "CO2 Profile Scale Factor" not in x["names"] and "CH4 Profile Scale Factor" in x["names"]:
+            xch4_ret_temp = calculate_Xgas(model_prior.ch4*x["ret"][0], model_prior.p*x["ret"][2], model_prior.q*x["ret"][3])[0] * 1e9
+            print("Final retrieved XCH4 =".ljust(23),'{:.5f}'.format(xch4_ret_temp).rjust(10),"+/-",'{:.5f}'.format(xch4_ret_temp*np.diagonal(self.S)[0]**0.5),"ppb")
+            print("Final XCH4 error (retrieved - true) =".ljust(37),'{:.5f}'.format(xch4_ret_temp - model_true.xch4).rjust(8),"ppb")
+
+        else:
+            print("Unexpected state vector setup!")
+
         print("Total retrieval time =",'{:.2f}'.format(time.time()-time_total),"s")
 
 
@@ -500,7 +527,7 @@ class Retrieval:
 
         #Modify the prior state vector appropriately
         #Full-physics setup:
-        if "CO2 Profile Multiplicative Offset" in x["names"] and "CH4 Profile Multiplicative Offset" in x["names"]:
+        if "CO2 Profile Scale Factor" in x["names"] and "CH4 Profile Scale Factor" in x["names"]:
             co2 = model_prior.co2 * x["ret"][0]
             ch4 = model_prior.ch4 * x["ret"][1]
             T = model_prior.T + x["ret"][2]
@@ -533,7 +560,7 @@ class Retrieval:
                 if "Aerosol Optical Depth" in x["names"]: model.y_k[:,8] = model.y_aerosol #tau_aerosol
 
         #CO2-only run
-        elif "CO2 Profile Multiplicative Offset" in x["names"] and "CH4 Profile Multiplicative Offset" not in x["names"]:
+        elif "CO2 Profile Scale Factor" in x["names"] and "CH4 Profile Scale Factor" not in x["names"]:
             co2 = model_prior.co2 * x["ret"][0]
             T = model_prior.T + x["ret"][1]
             p = model_prior.p * x["ret"][2]
@@ -556,7 +583,7 @@ class Retrieval:
                 model.y_k[:,4] = model.R_band_albedo[0] #Band 2 albedo. 0th index in this case.
 
         #CH4-only run
-        elif "CO2 Profile Multiplicative Offset" not in x["names"] and "CH4 Profile Multiplicative Offset" in x["names"]:
+        elif "CO2 Profile Scale Factor" not in x["names"] and "CH4 Profile Scale Factor" in x["names"]:
             ch4 = model_prior.ch4 * x["ret"][0]
             T = model_prior.T + x["ret"][1]
             p = model_prior.p * x["ret"][2]

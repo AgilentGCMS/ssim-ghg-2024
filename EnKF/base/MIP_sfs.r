@@ -1,4 +1,4 @@
-# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/base/MIP_sfs.r: 05 Jun 2024 (Wed) 03:42:27 UTC>
+# Time-stamp: <hercules-login-4.hpc.msstate.edu:/work/noaa/co2/andy/Projects/enkf_summer_school/repo/ssim-ghg-2024/EnKF/base/MIP_sfs.r: 13 Jun 2024 (Thu) 23:49:17 UTC>
 
 # This code applies the EnKF measurement update to a truth condition
 # generated from scaling factors derived from OCO-2 v10 MIP models.
@@ -55,19 +55,19 @@ nmemb <- 8000
 nparms <- 22*24 # 22 regions, 24 months
 
 if(FALSE) {
-  land_prior_sd = 1.
-  ocean_prior_sd = 1.
+  land_prior_sd = 1.6
+  ocean_prior_sd = 1.2
   #-- This will set up a prior temporal correlation
   Sx = bdiag(rep(list(ar_covariance(24, 0.5)), 22))
   #-- scale by variance for land/ocean
   var_scaling_diagonal = diag(c(rep(land_prior_sd,24*11),rep(ocean_prior_sd,24*11)))
   Sx = as.matrix(var_scaling_diagonal %*% Sx %*% t(var_scaling_diagonal))
 } else {
-  Sx <- diag(rep(1.4,nparms))
+  Sx <- diag(rep(1.2,nparms))
 }
 Sx.prior <- Sx
 
-x.prior <- matrix(0,nrow=nparms,ncol=1) # prior central value
+x.prior <- matrix(1,nrow=nparms,ncol=1) # prior central value: 1.0 is close to unbiased guess (0 would be biased)
 dx.prior <- generate_ensemble(Sx=Sx.prior,nmemb=nmemb) # prior deviations
 
 # Load MIP scaling factors for truth condition
@@ -115,10 +115,11 @@ dim(obs) <- c(nobs,1)
 # Restrict to nobs randomly sampled subset of measurements. Could use
 # obs_catalog or row.names of H to do more systematically-chosen
 # subsets.
-nobs.subset <- 2000
+nobs.subset <- 10000
 
 # lx is a vector of indices into the original 1:nobs 
-lx <- sample(x=1:length(obs),size=nobs.subset) 
+#lx <- sample(x=1:length(obs),size=nobs.subset)
+lx <- seq(1,nobs,length.out=nobs.subset) # fixed sequence
 lx.obs.save <- lx
 
 # subset all the arrays
@@ -195,14 +196,14 @@ R_diagonal=rep(0.5,dim(H.orig)[1])
 R_diagonal[lx.obs.save] <- sqrt(Szd.assumed)
 y=obs.all
 
-ic = invert_clean(H=H.orig,R_diagonal=R_diagonal,
-                  P_0=Sx.prior,y=y,
-                  subset_indicator_obs=subset_indicator_obs,
-                  state_vector_true=truth_condition-1)
+batch <- invert_clean(H=H.orig,R_diagonal=R_diagonal,
+                      P_0=Sx.prior,y=y,
+                      subset_indicator_obs=subset_indicator_obs,
+                      state_vector_true=truth_condition-1)
 
 # Adding 1.0 to ic results because Andrew's code explicitly
 # centers the scaling factors by subtracting 1.0
-ic$posterior$x_hat <- ic$posterior$x_hat + 1
+batch$posterior$x_hat <- batch$posterior$x_hat + 1
 
 # Kalman filter measurement update
 kf <- kf_meas_update(x=x.prior,Sx=Sx.prior,H=H,z=obs,
@@ -211,7 +212,7 @@ kf <- kf_meas_update(x=x.prior,Sx=Sx.prior,H=H,z=obs,
 posterior.dofs <- FALSE
 
 if(posterior.dofs) {
-  ndofs.ic <- ndofs.patil(ic$posterior$P)
+  ndofs.ic <- ndofs.patil(batch$posterior$P)
   ndofs.kf <- ndofs.patil(kf$Sx)
   ndofs.enkf <- ndofs.patil(enkf$Sx)
 } else {
@@ -230,13 +231,16 @@ chi2.prior.enkf <- (1/nparms) * t(enkf$x - x.prior) %*% solve(Sx.prior) %*% (enk
 obs.enkf.post <- simulate_observed(H=H,x=enkf$x)
 chi2.obs.enkf <- (1/nobs) * t(obs - obs.enkf.post) %*% diag(1/Szd.assumed) %*% (obs - obs.enkf.post)
 
-chi2.state.ic <- (1/ndofs.ic) * t(ic$posterior$x_hat - truth_condition) %*% solve(ic$posterior$P) %*% (ic$posterior$x_hat - truth_condition)
-chi2.prior.ic <- (1/nparms) * t(ic$posterior$x_hat - x.prior) %*% solve(Sx.prior) %*% (ic$posterior$x_hat - x.prior)
-obs.ic.post <- simulate_observed(H=H,x=ic$posterior$x_hat)
+state.z.enkf <- solve(chol(enkf$Sx)) %*% (enkf$x - truth_condition)
+normality.test(state.z.enkf,known.mean=0,known.sd=1)
+stop()
+chi2.state.ic <- (1/ndofs.ic) * t(batch$posterior$x_hat - truth_condition) %*% solve(batch$posterior$P) %*% (batch$posterior$x_hat - truth_condition)
+chi2.prior.ic <- (1/nparms) * t(batch$posterior$x_hat - x.prior) %*% solve(Sx.prior) %*% (batch$posterior$x_hat - x.prior)
+obs.ic.post <- simulate_observed(H=H,x=batch$posterior$x_hat)
 chi2.obs.ic <- (1/nobs) * t(obs - obs.ic.post) %*% diag(1/Szd.assumed) %*% (obs - obs.ic.post)
 
 cat(sprintf("   [IC] chi2 means: state %.2f, prior %.2f, obs %.2f on %d (%d) DOFs; RMSE %.2f\n",
-            chi2.state.ic,chi2.prior.ic,chi2.obs.ic,ndofs.ic,ndofs.patil(ic$posterior$P),compute.rmse(ic$posterior$x_hat - truth_condition)))
+            chi2.state.ic,chi2.prior.ic,chi2.obs.ic,ndofs.ic,ndofs.patil(batch$posterior$P),compute.rmse(batch$posterior$x_hat - truth_condition)))
 
 cat(sprintf("   [KF] chi2 means: state %.2f, prior %.2f, obs %.2f on %d (%d) DOFs; RMSE %.2f\n",
             chi2.state.kf,chi2.prior.kf,chi2.obs.kf,ndofs.kf,ndofs.patil(kf$Sx),compute.rmse(kf$x - truth_condition)))
@@ -250,13 +254,13 @@ cat(sprintf(" [EnKF] chi2 means: state %.2f, prior %.2f, obs %.2f on %d (%d) DOF
 plot.flux.timeseries(ests=list(Truth=list(x=truth_condition),
                                EnKF=list(x=enkf$x,Sx=enkf$Sx),
                                KF=list(x=kf$x,Sx=kf$Sx),
-                               Batch=list(x=ic$posterior$x_hat,Sx=ic$posterior$P)), # prior=list(x=x.prior,Sx=Sx.prior)),
+                               Batch=list(x=batch$posterior$x_hat,Sx=batch$posterior$P)), # prior=list(x=x.prior,Sx=Sx.prior)),
                   pdf.name="MIP_sfs.flux.pdf")
 
 plot.is.timeseries(xs=list(Truth=truth_condition,
                            EnKF=enkf$x,
                            KF=kf$x,
-                           Batch=ic$posterior$x_hat,
+                           Batch=batch$posterior$x_hat,
                            Prior=x.prior),
                    dataset_names=c("co2_mlo_surface-insitu_1_allvalid",
                                    "co2_brw_surface-insitu_1_allvalid",
