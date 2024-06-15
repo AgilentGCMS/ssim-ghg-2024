@@ -27,6 +27,7 @@ class Visualize(Paths):
             'noaa_observatories': 'noaa_observatories_mc/summary',
             'mip_is': 'mip_is_mc/summary',
             'mip_oco2': 'mip_oco2_mc/summary',
+            'noaa_observatories_reco': 'noaa_observatories_mc_reco/summary',
             }
 
 class Diagnostic_Plots(Visualize):
