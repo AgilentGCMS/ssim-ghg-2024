@@ -568,7 +568,7 @@ plot.flux.timeseries <- function(ests,
 
     pchs <- numeric(0) # an empty numeric vector
     ltys <- numeric(0) # an empty numeric vector
-    dts <- 30.5*86400*seq(from=-0.4,to=0.4,length.out=nests)
+    dts <- 30.5*86400*seq(from=-0.12,to=0.12,length.out=nests)
     iest <- 0
     for (nm in names(ests)) {
       iest <- iest+1
@@ -736,7 +736,7 @@ plot.x.timeseries <- function(ests,
 
     pchs <- numeric(0) # an empty numeric vector
     ltys <- numeric(0) # an empty numeric vector
-    dts <- 30.5*86400*seq(from=-0.4,to=0.4,length.out=nests)
+    dts <- 30.5*86400*seq(from=-0.12,to=0.12,length.out=nests)
     iest <- 0
     for (nm in names(ests)) {
       iest <- iest+1
