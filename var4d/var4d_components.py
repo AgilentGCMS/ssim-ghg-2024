@@ -808,7 +808,8 @@ class Var4D_Components(RunSpecs):
             setattr(fid, 'creation_date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
     def var4d_chain(self, **kwargs):
-        max_iter = kwargs['max_iter'] if 'max_iter' in kwargs else 50
+        max_iter = kwargs['max_iter'] if 'max_iter' in kwargs else 500
+        max_gradnorm = kwargs['gradnorm'] if 'gradnorm' in kwargs else 1.0E-4
         optim_method = kwargs['optim_method'] if 'optim_method' in kwargs else 'BFGS'
         use_hessian = kwargs['hessian'] if 'hessian' in kwargs else False
         sites_to_output = set(self.obs_cons.site_code_to_dataset.keys())
@@ -842,7 +843,7 @@ class Var4D_Components(RunSpecs):
         # now optimize
         minimize_args = dict(
             method=optim_method, jac=self.calculate_gradient,
-            options={'maxiter': max_iter, 'disp': self.verbose},
+            options={'maxiter': max_iter, 'gtol': max_gradnorm, 'disp': self.verbose},
             )
         if use_hessian and optim_method in ['Newton-CG', 'trust-krylov', 'trust-ncg', 'trust-constr']:
             minimize_args['hessp'] = self.hessian_product
