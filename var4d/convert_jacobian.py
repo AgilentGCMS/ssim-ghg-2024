@@ -51,6 +51,7 @@ class Paths(object):
                 'Northern Ocean', 'North Atlantic Temperate', 'Atlantic Tropical', 'South Atlantic Temperate', 'Southern Ocean',
                 'Indian Tropical', 'South Indian Temperate'],
             }
+        self.region_aggregates['Globe'] = self.region_aggregates['Global Land'] + self.region_aggregates['Global Ocean']
 
 class Convert_RDA(Paths):
 

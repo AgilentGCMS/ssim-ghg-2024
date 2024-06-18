@@ -269,6 +269,66 @@ class Visualize_Fluxes(Visualize):
     def __init__(self, project):
         super(Visualize_Fluxes, self).__init__(project)
 
+    def print_annual_totals(self):
+        result_dict = {}
+        result_file = os.path.join(self.output_dir, 'optim_summary.nc')
+        with Dataset(result_file, 'r') as fid:
+            ymd_tuples = fid.variables['time_coordinate'][:]
+            time_indices = ymd_tuples[:,0] == 2015
+
+            prior_flux = fid.variables['prior_flux'][:,time_indices]
+            poste_flux = fid.variables['poste_flux'][:,time_indices]
+            true_flux = fid.variables['true_flux'][:,time_indices]
+            read_errors = 'poste_cov' in fid.variables
+
+            region_names_in_file = fid.variables['region_areas'].region_names.split(',')
+            region_areas = fid.variables['region_areas'][:] # m^2
+
+        month_lengths = np.array([calendar.monthrange(2015,m)[1] for m in range(1,13)])
+        flux_conversion_factor = (12.01/44.01) * (1.0E-12 * 86400.0 * 365.25) # from Kg CO2/s to Pg C/year
+        all_regions = region_names_in_file + list(self.region_aggregates.keys())
+
+        for region in all_regions:
+            if region in region_names_in_file:
+                reg_idx = region_names_in_file.index(region)
+                result_dict[region] = {
+                    'prior': np.average(prior_flux[reg_idx]*region_areas[reg_idx]*flux_conversion_factor, weights=month_lengths),
+                    'poste': np.average(poste_flux[reg_idx]*region_areas[reg_idx]*flux_conversion_factor, weights=month_lengths),
+                    'truth': np.average(true_flux[reg_idx]*region_areas[reg_idx]*flux_conversion_factor, weights=month_lengths),
+                    }
+            else:
+                result_dict[region] = {'prior': 0.0, 'poste': 0.0, 'truth': 0.0}
+                for reg in self.region_aggregates[region]:
+                    reg_idx = region_names_in_file.index(reg)
+                    result_dict[region]['prior'] += np.average(prior_flux[reg_idx]*region_areas[reg_idx]*flux_conversion_factor, weights=month_lengths)
+                    result_dict[region]['poste'] += np.average(poste_flux[reg_idx]*region_areas[reg_idx]*flux_conversion_factor, weights=month_lengths)
+                    result_dict[region]['truth'] += np.average(true_flux[reg_idx]*region_areas[reg_idx]*flux_conversion_factor, weights=month_lengths)
+
+            if read_errors:
+                month_list = [datetime(2015,m,1) for m in range(1,13)]
+                if region in region_names_in_file:
+                    region_list = [region]
+                else:
+                    region_list = self.region_aggregates[region]
+                result_dict[region]['prior_err'] = self.calculate_error_on_aggregate(region_list, month_list, 'prior')
+                result_dict[region]['poste_err'] = self.calculate_error_on_aggregate(region_list, month_list, 'poste')
+
+        # now print
+        max_region_length = max([len(s) for s in all_regions])
+        print_lines = ['Region'.ljust(max_region_length) + 'True (PgC/yr)'.rjust(15) + 'Prior (PgC/yr)'.rjust(16) + 'Poste (PgC/yr)'.rjust(16)]
+        line_length = len(print_lines[0])
+        print_lines.append('='*line_length)
+
+        for region, data in result_dict.items():
+            if read_errors:
+                print_line = region.ljust(max_region_length) + '%15.2f'%data['truth'] + '%9.2f ± %4.2f'%(data['prior'],data['prior_err']) + '%9.2f ± %4.2f'%(data['poste'],data['poste_err'])
+            else:
+                print_line = region.ljust(max_region_length) + '%15.2f'%data['truth'] + '%16.2f'%data['prior'] + '%16.2f'%data['poste']
+            print_lines.append(print_line)
+
+        for line in print_lines:
+            print(line)
+
     def calculate_error_on_aggregate(self, region_list, month_list, stage):
         if isinstance(region_list, str):
             region_list = [region_list]
