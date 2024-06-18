@@ -28,6 +28,7 @@ class Visualize(Paths):
             'mip_is': 'mip_is_mc/summary',
             'mip_is_reco': 'mip_is_mc_reco/summary',
             'mip_oco2': 'mip_oco2_mc/summary',
+            'mip_oco2_reco': 'mip_oco2_mc_reco/summary',
             'noaa_observatories_reco': 'noaa_observatories_mc_reco/summary',
             }
 
@@ -236,13 +237,13 @@ class Monte_Carlo_avg(Paths):
         width = 5.0 ; height = 5.0
         lpad = 1.7 ; bpad = 1.7
         tpad = 0.3 ; rpad = 0.5
-        cbar_pad = 0.1 ; cbar_width = 0.2 ; wd_pad = 0.1
-        figwidth = lpad + 2*width + wd_pad + cbar_pad + cbar_width + rpad
+        cbar_pad = 0.2 ; cbar_width = 0.2 ; wd_pad = 0.1
+        figwidth = 2*lpad + 2*width + wd_pad + cbar_pad + cbar_width + rpad
         figheight = bpad + height + tpad
         fig = plt.figure(figsize=(figwidth, figheight))
         apri_ax = plt.axes([lpad/figwidth, bpad/figheight, width/figwidth, height/figheight])
         apos_ax = plt.axes([(lpad+width+wd_pad)/figwidth, bpad/figheight, width/figwidth, height/figheight])
-        cbar_ax = plt.axes([(lpad+2*width+wd_pad+cbar_pad)/figwidth, bpad/figheight, cbar_width/figwidth, height/figheight])
+        cbar_ax = plt.axes([(2*lpad+2*width+wd_pad+cbar_pad)/figwidth, bpad/figheight, cbar_width/figwidth, height/figheight])
 
         img = apri_ax.imshow(corrcoeffs_apri, interpolation='nearest', vmin=-1., vmax=1., cmap=plt.cm.bwr, origin='lower')
         img = apos_ax.imshow(corrcoeffs_apos, interpolation='nearest', vmin=-1., vmax=1., cmap=plt.cm.bwr, origin='lower')
@@ -252,9 +253,11 @@ class Monte_Carlo_avg(Paths):
         apri_ax.set_xticklabels(all_regions, rotation=90, fontsize=10, family=self.figure_font)
         apri_ax.set_yticks(np.arange(n_reg))
         apri_ax.set_yticklabels(all_regions, fontsize=10, family=self.figure_font)
+        apos_ax.yaxis.tick_right()
         apos_ax.set_xticks(np.arange(n_reg))
         apos_ax.set_xticklabels(all_regions, rotation=90, fontsize=10, family=self.figure_font)
-        apos_ax.set_yticklabels([])
+        apos_ax.set_yticks(np.arange(n_reg))
+        apos_ax.set_yticklabels(all_regions, fontsize=10, family=self.figure_font)
 
         cbar_ax.set_yticks(np.arange(-1.,1.1,0.2))
         plt.setp(cbar_ax.get_yticklabels(), size=12, family=self.figure_font)
