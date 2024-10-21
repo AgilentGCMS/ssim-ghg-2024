@@ -125,10 +125,6 @@ class ForwardFunction:
 
             for j in range(len(self.band_molecules[i])):
                 molecules_sigma_temp = sigma_lookup(self.band_molecules[i][j],self.band_absco_res_wn[i],self.p_layer,self.T_layer,absco_data)
-                # let's say the effect of pressure broadening was inverted, so that the TOA layer was at 1000 hPa instead of the surface
-                # molecules_sigma_temp = sigma_lookup(self.band_molecules[i][j],self.band_absco_res_wn[i],100000-self.p_layer,self.T_layer,absco_data)
-                # How much of the AK comes from having a temperature profile?
-                # molecules_sigma_temp = sigma_lookup(self.band_molecules[i][j],self.band_absco_res_wn[i],[50000.],self.T_layer,absco_data)
 
                 #Tau is the cross section times number density times dz. We can assume hydrostatic equilibrium and the ideal gas law to solve it using this equation instead:
                 if self.band_molecules[i][j] == 'o2':
