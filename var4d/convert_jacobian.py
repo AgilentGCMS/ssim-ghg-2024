@@ -1,33 +1,22 @@
 import rdata
 import numpy as np
 from netCDF4 import Dataset
-import os, pickle
+import os, pickle, configparser
 from collections import defaultdict
 
 class Paths(object):
 
     def __init__(self):
         super(Paths, self).__init__()
-        # define the order in which paths will be searched for input data
-        input_folder_order = [
-            os.path.join(os.environ['HOME'], 'shared/ssim-ghg-data/inversion_examples'), # on GHG Center's JupyterHub
-            os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/ssim-ghg-data/2024/input'), # Sourish's laptop
-            ]
-        output_folder_order = [ # for each input folder above, define an appropriate output folder
-            os.path.join(os.environ['HOME'], 'inversion_output'), # GHG Center's JupyterHub
-            os.path.join(os.environ['HOME'], 'Code/Teaching/DA Summer School/ssim-ghg-data/2024/output'), # Sourish's laptop
-            ]
-        font_order = ['Inconsolata', 'Calibri']
-        for folder_i, folder_o, ff in zip(input_folder_order, output_folder_order, font_order):
-            if os.path.isdir(folder_i):
-                self.figure_font = ff
-                self.data_root = folder_i
-                self.output_root = folder_o
-                if not os.path.isdir(self.output_root):
-                    os.makedirs(self.output_root)
-                break
-        else:
-            raise RuntimeError('No suitable folder found with input data')
+        # setting to be stored in ../site_settings.ini
+        conf = configparser.ConfigParser()
+        conf.read('../site_settings.ini')
+        self.data_root = conf.get('paths', 'input folder')
+        self.output_root = conf.get('paths', 'output folder')
+        try:
+            self.figure_font = conf.get('plotting', 'figure font')
+        except NoOptionError:
+            self.figure_font = 'Sans Serif'
 
         self.jacobi_rda = os.path.join(self.data_root, 'jacobians/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask_hour_timestamping.rda')
         self.jacobi_nc = os.path.join(self.data_root, 'jacobians/trunc_full_jacob_032624_with_dimnames_unit_pulse_4x5_mask.nc')
