@@ -1,0 +1,10 @@
+#-- Config file for toy examples
+---
+toy_examples:
+- paths:
+    input_folder: /Users/aschuh/demonstrations/ssim-ghg-2024/data
+    #-- below doesn't exist, will have to create if necessary in codebases
+    output_folder: /Users/aschuh/demonstrations/ssim-ghg-2024/output
+- plotting: 
+    font: Script
+---
